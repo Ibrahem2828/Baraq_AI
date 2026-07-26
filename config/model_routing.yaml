@@ -1,0 +1,45 @@
+version: 1
+# model aliases refer to environment variables in Settings, not hard-coded API keys.
+tasks:
+  fahes_generate_quiz:
+    model_tier: high_quality
+    prompt: fahes_generate_quiz
+    max_output_tokens: 12000
+    reasoning_effort: medium
+    timeout_seconds: 120
+    provider_order: [openai_primary, openai_secondary]
+  khota_generate_plan:
+    model_tier: balanced
+    prompt: khota_generate_plan
+    max_output_tokens: 10000
+    reasoning_effort: low
+    timeout_seconds: 90
+    provider_order: [openai_primary, openai_secondary]
+  rasheed_recommend:
+    model_tier: balanced
+    prompt: rasheed_recommend
+    max_output_tokens: 6000
+    reasoning_effort: medium
+    timeout_seconds: 75
+    provider_order: [openai_primary, openai_secondary]
+  kholasa_summarize:
+    model_tier: balanced
+    prompt: kholasa_summarize
+    max_output_tokens: 14000
+    reasoning_effort: low
+    timeout_seconds: 150
+    provider_order: [openai_primary, openai_secondary]
+  sada_transcribe:
+    model_tier: balanced
+    prompt: sada_cleanup_transcript
+    max_output_tokens: 14000
+    reasoning_effort: low
+    timeout_seconds: 300
+    provider_order: [openai_primary, openai_secondary]
+  source_ingest:
+    model_tier: fast
+    prompt: null
+    max_output_tokens: 0
+    reasoning_effort: null
+    timeout_seconds: 300
+    provider_order: [openai_primary, openai_secondary]

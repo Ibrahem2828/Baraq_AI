@@ -1,0 +1,20 @@
+# Replace values when OpenAI pricing changes. USD per 1 million tokens unless noted.
+# Keeping pricing outside code allows cost reports to remain versioned and auditable.
+version: "2026-07-placeholder"
+models:
+  gpt-5.1:
+    input_per_million: 0.0
+    cached_input_per_million: 0.0
+    output_per_million: 0.0
+  gpt-5-mini:
+    input_per_million: 0.0
+    cached_input_per_million: 0.0
+    output_per_million: 0.0
+  gpt-5-nano:
+    input_per_million: 0.0
+    cached_input_per_million: 0.0
+    output_per_million: 0.0
+  text-embedding-3-small:
+    input_per_million: 0.0
+  gpt-4o-transcribe:
+    audio_per_minute: 0.0

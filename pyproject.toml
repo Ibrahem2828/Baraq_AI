@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baraq-ai-service"
+version = "1.0.0"
+description = "Standalone AI microservice for Baraq educational platform"
+readme = "README_AR.md"
+requires-python = ">=3.12"
+authors = [{name = "Baraq Engineering"}]
+license = {text = "Proprietary"}
+dependencies = [
+  "fastapi>=0.115,<1.0",
+  "uvicorn[standard]>=0.34,<1.0",
+  "pydantic>=2.10,<3.0",
+  "pydantic-settings>=2.7,<3.0",
+  "sqlalchemy[asyncio]>=2.0.36,<3.0",
+  "asyncpg>=0.30,<1.0",
+  "alembic>=1.14,<2.0",
+  "pgvector>=0.3.6,<1.0",
+  "redis>=5.2,<7.0",
+  "celery[redis]>=5.4,<6.0",
+  "openai>=1.70,<3.0",
+  "httpx>=0.28,<1.0",
+  "PyJWT[crypto]>=2.10,<3.0",
+  "cryptography>=44,<47",
+  "orjson>=3.10,<4.0",
+  "PyYAML>=6.0,<7.0",
+  "jsonschema>=4.23,<5.0",
+  "tenacity>=9.0,<10.0",
+  "pypdf>=5.1,<7.0",
+  "python-docx>=1.1,<2.0",
+  "python-pptx>=1.0,<2.0",
+  "python-multipart>=0.0.20,<1.0",
+  "prometheus-client>=0.21,<1.0",
+  "structlog>=24.4,<26.0",
+  "sentry-sdk[fastapi]>=2.19,<3.0",
+  "email-validator>=2.2,<3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<10.0",
+  "pytest-asyncio>=0.25,<1.0",
+  "pytest-cov>=6.0,<7.0",
+  "ruff>=0.9,<1.0",
+  "mypy>=1.14,<2.0",
+  "types-PyYAML>=6.0,<7.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --disable-warnings --maxfail=1"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
