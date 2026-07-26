@@ -11,9 +11,9 @@ from app.pipelines.sada import SadaPipeline
 _PIPELINES: dict[TaskType, type[AIPipeline]] = {
     TaskType.FAHES_GENERATE_QUIZ: FahesPipeline,
     TaskType.KHOTA_GENERATE_PLAN: KhotaPipeline,
-    TaskType.RASHEED_RECOMMEND: RasheedPipeline,
-    TaskType.KHOLASA_SUMMARIZE: KholasaPipeline,
-    TaskType.SADA_TRANSCRIBE: SadaPipeline,
+    TaskType.RASHEED_RECOMMENDATIONS: RasheedPipeline,
+    TaskType.KHOLASA_GENERATE_SUMMARY: KholasaPipeline,
+    TaskType.SADA_TRANSCRIBE_AUDIO: SadaPipeline,
 }
 
 

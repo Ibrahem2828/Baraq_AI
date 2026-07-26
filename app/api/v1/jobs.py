@@ -1,17 +1,22 @@
 from __future__ import annotations
 
-import uuid
+from fastapi import APIRouter, status
 
-from fastapi import APIRouter, Query, status
-
-from app.api.dependencies import Backend, CurrentUser, DbSession, RateLimitedUser
+from app.api.dependencies import DjangoService, DbSession, IdempotencyKey
 from app.core.config import get_settings
 from app.models.ai_job import AIJob
+from app.models.enums import TaskType
 from app.schemas.common import APIEnvelope, Citation
-from app.schemas.jobs import JobAccepted, JobCreateRequest, JobOutputView, JobView
+from app.schemas.jobs import (
+    DjangoJobCreateRequest,
+    JobAccepted,
+    JobCreateRequest,
+    JobOutputView,
+    JobView,
+)
 from app.services.job_service import JobService
 
-router = APIRouter(prefix="/jobs", tags=["AI Jobs"])
+router = APIRouter(prefix="/jobs", tags=["Django Gateway Jobs"])
 
 
 def to_job_view(job: AIJob) -> JobView:
@@ -26,11 +31,10 @@ def to_job_view(job: AIJob) -> JobView:
             groundedness_score=job.output.groundedness_score,
             model_name=job.output.model_name,
             provider_account=job.output.provider_account.value,
-            materialized_resource_type=job.output.materialized_resource_type,
-            materialized_resource_id=job.output.materialized_resource_id,
         )
     return JobView(
-        job_id=job.id,
+        job_id=job.backend_request_id or str(job.id),
+        ai_job_id=job.id,
         task_type=job.task_type,
         character=job.character,
         status=job.status,
@@ -48,58 +52,52 @@ def to_job_view(job: AIJob) -> JobView:
 
 @router.post("", response_model=APIEnvelope[JobAccepted], status_code=status.HTTP_202_ACCEPTED)
 async def create_job(
-    payload: JobCreateRequest,
+    payload: DjangoJobCreateRequest,
     session: DbSession,
-    user: RateLimitedUser,
-    backend: Backend,
+    idempotency_key: IdempotencyKey,
+    _: DjangoService,
 ) -> APIEnvelope[JobAccepted]:
-    service = JobService(session, backend)
-    job, cache_hit = await service.create_job(user_id=user.user_id, request=payload)
+    request = JobCreateRequest(
+        task_type=payload.task_type,
+        payload=payload.input,
+        idempotency_key=idempotency_key,
+        backend_request_id=payload.client_job_id,
+        model_tier=payload.model_tier,
+    )
+    job, cache_hit = await JobService(session).create_job(user_id=payload.user_id, request=request)
     settings = get_settings()
+    job_id = job.backend_request_id or str(job.id)
     return APIEnvelope(
         data=JobAccepted(
-            job_id=job.id,
+            job_id=job_id,
+            ai_job_id=job.id,
             status=job.status,
             task_type=job.task_type,
             character=job.character,
-            status_url=f"{settings.public_api_prefix}/jobs/{job.id}",
-            estimated_wait_seconds=5 if job.task_type.value != "sada_transcribe" else 30,
+            status_url=f"{settings.public_api_prefix}/jobs/{job_id}",
+            estimated_wait_seconds=(
+                30 if job.task_type == TaskType.SADA_TRANSCRIBE_AUDIO else 5
+            ),
             cache_hit=cache_hit,
         )
     )
 
 
-@router.get("", response_model=APIEnvelope[list[JobView]])
-async def list_jobs(
-    session: DbSession,
-    user: CurrentUser,
-    backend: Backend,
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-) -> APIEnvelope[list[JobView]]:
-    jobs = await JobService(session, backend).list_jobs(
-        user_id=user.user_id, limit=limit, offset=offset
-    )
-    return APIEnvelope(data=[to_job_view(job) for job in jobs])
-
-
 @router.get("/{job_id}", response_model=APIEnvelope[JobView])
 async def get_job(
-    job_id: uuid.UUID,
+    job_id: str,
     session: DbSession,
-    user: CurrentUser,
-    backend: Backend,
+    _: DjangoService,
 ) -> APIEnvelope[JobView]:
-    job = await JobService(session, backend).get_job(job_id=job_id, user_id=user.user_id)
+    job = await JobService(session).get_job_by_client_id(client_job_id=job_id)
     return APIEnvelope(data=to_job_view(job))
 
 
 @router.post("/{job_id}/cancel", response_model=APIEnvelope[JobView])
 async def cancel_job(
-    job_id: uuid.UUID,
+    job_id: str,
     session: DbSession,
-    user: CurrentUser,
-    backend: Backend,
+    _: DjangoService,
 ) -> APIEnvelope[JobView]:
-    job = await JobService(session, backend).cancel_job(job_id=job_id, user_id=user.user_id)
+    job = await JobService(session).cancel_job_by_client_id(client_job_id=job_id)
     return APIEnvelope(data=to_job_view(job))

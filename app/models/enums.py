@@ -6,10 +6,9 @@ from enum import StrEnum
 class TaskType(StrEnum):
     FAHES_GENERATE_QUIZ = "fahes_generate_quiz"
     KHOTA_GENERATE_PLAN = "khota_generate_plan"
-    RASHEED_RECOMMEND = "rasheed_recommend"
-    KHOLASA_SUMMARIZE = "kholasa_summarize"
-    SADA_TRANSCRIBE = "sada_transcribe"
-    SOURCE_INGEST = "source_ingest"
+    RASHEED_RECOMMENDATIONS = "rasheed_recommendations"
+    KHOLASA_GENERATE_SUMMARY = "kholasa_generate_summary"
+    SADA_TRANSCRIBE_AUDIO = "sada_transcribe_audio"
 
 
 class Character(StrEnum):

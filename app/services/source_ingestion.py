@@ -36,7 +36,7 @@ class SourceIngestionService:
         )
 
     async def ensure_ingested(self, *, source_id: str, user_id: str) -> SourceManifest:
-        manifest = await self.backend.get_source_manifest(source_id=source_id, user_id=user_id)
+        manifest = await self.backend.get_source_manifest(source_id=source_id)
         existing = await self.repository.get_document_version(
             backend_source_id=manifest.source_id,
             content_sha256=manifest.content_sha256,
@@ -49,7 +49,7 @@ class SourceIngestionService:
                 "Source file exceeds the configured size limit",
                 code="source_too_large",
             )
-        content = await self.backend.download_source(manifest)
+        content = await self.backend.download_source(source_id=manifest.source_id)
         if len(content) != manifest.size_bytes:
             raise ValidationFailure(
                 "Downloaded source size does not match the backend manifest",

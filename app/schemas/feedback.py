@@ -20,6 +20,12 @@ class FeedbackCreate(StrictModel):
     implicit_signals: dict[str, Any] = Field(default_factory=dict)
 
 
+class DjangoFeedbackCreate(FeedbackCreate):
+    """Django-authenticated feedback payload; Django supplies the authoritative user."""
+
+    user_id: str = Field(min_length=1, max_length=64)
+
+
 class FeedbackView(StrictModel):
     feedback_id: uuid.UUID
     candidate_created: bool

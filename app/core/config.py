@@ -35,12 +35,10 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/2"
 
     baraq_backend_base_url: str = "https://api.barraq.xn--mgbaab0cxheq.tech"
-    baraq_backend_jwks_url: str = (
-        "https://api.barraq.xn--mgbaab0cxheq.tech/.well-known/jwks.json"
-    )
-    baraq_backend_audience: str = "baraq-api"
-    baraq_backend_issuer: str = "https://api.barraq.xn--mgbaab0cxheq.tech"
+    # Django is the only public-facing identity and authorization authority.
+    # JWT/JWKS settings were removed from the AI production request path in Phase 1.
     baraq_service_id: str = "baraq-ai-service"
+    baraq_django_service_id: str = "baraq-django"
     baraq_service_hmac_secret: SecretStr = SecretStr("change-me")
     baraq_callback_timeout_seconds: int = 15
     baraq_http_timeout_seconds: int = 30
@@ -95,6 +93,8 @@ class Settings(BaseSettings):
     sentry_dsn: str | None = None
     prometheus_enabled: bool = True
     otel_exporter_otlp_endpoint: str | None = None
+    enable_legacy_public_api: bool = False
+    enable_admin_api: bool = False
 
     model_routing_config_path: Path = BASE_DIR / "config" / "model_routing.yaml"
     pricing_config_path: Path = BASE_DIR / "config" / "pricing.yaml"
@@ -124,8 +124,7 @@ class Settings(BaseSettings):
             raise ValueError("OPENAI_PRIMARY_API_KEY is required in production")
         if not self.baraq_backend_base_url.startswith("https://"):
             raise ValueError("BARAQ_BACKEND_BASE_URL must use HTTPS in production")
-        if not self.baraq_backend_jwks_url.startswith("https://"):
-            raise ValueError("BARAQ_BACKEND_JWKS_URL must use HTTPS in production")
+
 
 
 @lru_cache(maxsize=1)

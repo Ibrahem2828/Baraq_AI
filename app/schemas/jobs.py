@@ -2,35 +2,48 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Annotated, Literal, Union
+from typing import Any, Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
+from app.core.task_types import normalize_task_type
 from app.models.enums import Character, JobStatus, TaskType
 from app.schemas.common import Citation, StrictModel
-from app.schemas.fahes import FahesRequest
-from app.schemas.kholasa import KholasaRequest
-from app.schemas.khota import KhotaRequest
-from app.schemas.rasheed import RasheedRequest
-from app.schemas.sada import SadaRequest
-
-TaskPayload = Annotated[
-    Union[FahesRequest, KhotaRequest, RasheedRequest, KholasaRequest, SadaRequest],
-    Field(discriminator=None),
-]
 
 
 class JobCreateRequest(StrictModel):
+    """Internal normalized request; it is constructed only by the Django route."""
+
     task_type: TaskType
     payload: dict[str, Any]
     idempotency_key: str = Field(min_length=8, max_length=128)
-    backend_request_id: str | None = Field(default=None, max_length=128)
+    backend_request_id: str = Field(min_length=1, max_length=128)
     model_tier: Literal["fast", "balanced", "high_quality"] | None = None
-    force_refresh: bool = False
+
+    @field_validator("task_type", mode="before")
+    @classmethod
+    def normalize_legacy_task_type(cls, value: object) -> str:
+        return normalize_task_type(value)
+
+
+class DjangoJobCreateRequest(StrictModel):
+    """Django -> AI job submission contract for POST /api/ai/v1/jobs."""
+
+    client_job_id: str = Field(min_length=1, max_length=128)
+    user_id: str = Field(min_length=1, max_length=64)
+    task_type: TaskType
+    input: dict[str, Any]
+    model_tier: Literal["fast", "balanced", "high_quality"] | None = None
+
+    @field_validator("task_type", mode="before")
+    @classmethod
+    def normalize_legacy_task_type(cls, value: object) -> str:
+        return normalize_task_type(value)
 
 
 class JobAccepted(StrictModel):
-    job_id: uuid.UUID
+    job_id: str
+    ai_job_id: uuid.UUID
     status: JobStatus
     task_type: TaskType
     character: Character
@@ -48,12 +61,11 @@ class JobOutputView(StrictModel):
     groundedness_score: float | None = None
     model_name: str
     provider_account: str
-    materialized_resource_type: str | None = None
-    materialized_resource_id: str | None = None
 
 
 class JobView(StrictModel):
-    job_id: uuid.UUID
+    job_id: str
+    ai_job_id: uuid.UUID
     task_type: TaskType
     character: Character
     status: JobStatus

@@ -17,9 +17,9 @@ from app.schemas.sada import SadaResult
 SCHEMAS = {
     "fahes_generate_quiz": FahesResult,
     "khota_generate_plan": KhotaResult,
-    "rasheed_recommend": RasheedResult,
-    "kholasa_summarize": KholasaResult,
-    "sada_transcribe": SadaResult,
+    "rasheed_recommendations": RasheedResult,
+    "kholasa_generate_summary": KholasaResult,
+    "sada_transcribe_audio": SadaResult,
 }
 
 

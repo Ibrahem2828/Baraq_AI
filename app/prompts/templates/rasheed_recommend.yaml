@@ -1,6 +1,6 @@
 name: rasheed_recommend
 version: "1.0.0"
-task_type: rasheed_recommend
+task_type: rasheed_recommendations
 metadata:
   character: rasheed
   language: ar

@@ -1,29 +1,22 @@
 from __future__ import annotations
 
-import json
 from typing import Any, TypeVar
 
 import httpx
 from pydantic import BaseModel
 
 from app.core.config import get_settings
-from app.core.errors import AppError, ProviderError
 from app.core.endpoints import BACKEND_ENDPOINTS
+from app.core.errors import AppError, ProviderError
 from app.core.security import canonical_json_bytes, make_service_signature
-from app.schemas.backend import (
-    CreditCommitRequest,
-    CreditReservationRequest,
-    CreditReservationResponse,
-    LearnerContext,
-    MaterializeRequest,
-    MaterializeResponse,
-    SourceManifest,
-)
+from app.schemas.backend import CollectionManifest, LearnerContext, SourceManifest
 
 T = TypeVar("T", bound=BaseModel)
 
 
 class BackendClient:
+    """Signed AI -> Django client; Django remains owner of all business state."""
+
     def __init__(self) -> None:
         self.settings = get_settings()
         self.client = httpx.AsyncClient(
@@ -79,16 +72,18 @@ class BackendClient:
             return data
         return response_model.model_validate(data)
 
-    async def get_source_manifest(self, *, source_id: str, user_id: str) -> SourceManifest:
+    async def get_source_manifest(self, *, source_id: str) -> SourceManifest:
         return await self._request(
             "GET",
-            BACKEND_ENDPOINTS.source_manifest(source_id, user_id),
+            BACKEND_ENDPOINTS.source_manifest(source_id),
             response_model=SourceManifest,
         )
 
-    async def download_source(self, manifest: SourceManifest) -> bytes:
+    async def download_source(self, *, source_id: str) -> bytes:
+        path = BACKEND_ENDPOINTS.source_download(source_id)
+        headers = make_service_signature(method="GET", path=path, body=b"")
         try:
-            response = await self.client.get(str(manifest.download_url))
+            response = await self.client.get(path, headers=headers)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise ProviderError(
@@ -98,41 +93,16 @@ class BackendClient:
             ) from exc
         return response.content
 
+    async def get_collection_manifest(self, *, collection_id: str) -> CollectionManifest:
+        return await self._request(
+            "GET",
+            BACKEND_ENDPOINTS.collection_manifest(collection_id),
+            response_model=CollectionManifest,
+        )
+
     async def get_learner_context(self, *, user_id: str) -> LearnerContext:
         return await self._request(
             "GET",
             BACKEND_ENDPOINTS.learner_context(user_id),
             response_model=LearnerContext,
-        )
-
-    async def reserve_credits(
-        self, request: CreditReservationRequest
-    ) -> CreditReservationResponse:
-        return await self._request(
-            "POST",
-            BACKEND_ENDPOINTS.credits_reserve,
-            payload=request.model_dump(mode="json"),
-            response_model=CreditReservationResponse,
-        )
-
-    async def commit_credits(self, request: CreditCommitRequest) -> dict[str, Any]:
-        return await self._request(
-            "POST",
-            BACKEND_ENDPOINTS.credits_commit,
-            payload=request.model_dump(mode="json"),
-        )
-
-    async def refund_credits(self, *, reservation_id: str, reason: str) -> dict[str, Any]:
-        return await self._request(
-            "POST",
-            BACKEND_ENDPOINTS.credits_refund,
-            payload={"reservation_id": reservation_id, "reason": reason},
-        )
-
-    async def materialize(self, request: MaterializeRequest) -> MaterializeResponse:
-        return await self._request(
-            "POST",
-            BACKEND_ENDPOINTS.materialize,
-            payload=request.model_dump(mode="json"),
-            response_model=MaterializeResponse,
         )

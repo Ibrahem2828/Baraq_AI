@@ -1,6 +1,6 @@
 name: sada_cleanup_transcript
 version: "1.0.0"
-task_type: sada_transcribe
+task_type: sada_transcribe_audio
 metadata:
   character: sada
   language: ar

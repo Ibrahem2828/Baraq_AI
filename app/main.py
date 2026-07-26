@@ -6,8 +6,7 @@ from contextlib import asynccontextmanager
 import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import ORJSONResponse, Response
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from fastapi.responses import ORJSONResponse
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -113,10 +112,3 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> ORJSONRes
 
 
 app.include_router(api_router, prefix=settings.public_api_prefix)
-
-
-@app.get("/metrics", include_in_schema=False)
-async def metrics() -> Response:
-    if not settings.prometheus_enabled:
-        return Response(status_code=404)
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

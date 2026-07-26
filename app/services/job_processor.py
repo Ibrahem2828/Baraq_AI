@@ -19,7 +19,6 @@ from app.pipelines.base import PipelineContext
 from app.pipelines.registry import get_pipeline
 from app.providers.router import ProviderRouter
 from app.rag.embeddings import EmbeddingService
-from app.schemas.backend import CreditCommitRequest, MaterializeRequest
 from app.services.backend_client import BackendClient
 from app.services.generation import StructuredGenerationService
 from app.services.source_ingestion import SourceIngestionService
@@ -122,35 +121,8 @@ async def process_job(job_id: str) -> None:
             )
             session.add(output)
             await session.flush()
-            await _update_progress(
-                session,
-                job,
-                status=JobStatus.MATERIALIZING,
-                percent=90,
-                message="يتم حفظ النتيجة في حساب الطالب",
-            )
-            materialized = await backend.materialize(
-                MaterializeRequest(
-                    user_id=job.user_id,
-                    task_type=job.task_type.value,
-                    job_id=str(job.id),
-                    output_id=str(output.id),
-                    result=output.result_json,
-                    source_ids=job.source_ids,
-                )
-            )
-            output.materialized_resource_type = materialized.resource_type
-            output.materialized_resource_id = materialized.resource_id
-            if job.credit_reservation_id:
-                await backend.commit_credits(
-                    CreditCommitRequest(
-                        reservation_id=job.credit_reservation_id,
-                        actual_units=1,
-                        actual_cost_usd=provider.estimated_cost_usd,
-                        provider=provider.account.value,
-                        model=provider.model,
-                    )
-                )
+            # Django materializes results after it receives a Phase 4 outbox webhook.
+            # No direct callback is emitted here because callbacks must be persisted first.
             job.status = JobStatus.COMPLETED
             job.progress_percent = 100
             job.progress_message = "اكتملت المعالجة بنجاح"
@@ -172,14 +144,6 @@ async def process_job(job_id: str) -> None:
                 job.completed_at = datetime.now(UTC)
                 await session.commit()
                 AI_REQUESTS.labels(job.task_type.value, "failed").inc()
-                if job.credit_reservation_id:
-                    try:
-                        await backend.refund_credits(
-                            reservation_id=job.credit_reservation_id,
-                            reason=job.error_code or "processing_failed",
-                        )
-                    except Exception:  # noqa: BLE001
-                        logger.exception("credit_refund_failed", job_id=job_id)
         raise
     finally:
         await backend.aclose()

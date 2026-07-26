@@ -1,6 +1,6 @@
 name: kholasa_summarize
 version: "1.0.0"
-task_type: kholasa_summarize
+task_type: kholasa_generate_summary
 metadata:
   character: kholasa
   language: ar
