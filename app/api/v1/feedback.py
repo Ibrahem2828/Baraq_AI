@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, status
 
-from app.api.dependencies import DjangoService, DbSession
+from app.api.dependencies import DbSession, DjangoService
 from app.schemas.common import APIEnvelope
 from app.schemas.feedback import DjangoFeedbackCreate, FeedbackCreate, FeedbackView
 from app.services.feedback_service import FeedbackService

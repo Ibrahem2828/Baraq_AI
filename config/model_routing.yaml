@@ -1,38 +1,53 @@
-version: 1
-# model aliases refer to environment variables in Settings, not hard-coded API keys.
+version: 2
+# Each candidate carries its OWN provider + quality_tier; the router resolves
+# quality_tier to a real model name per provider (app/providers/model_aliases.py).
+# A candidate is never built by picking a model once and handing it to a
+# different fallback provider (spec section 5). Model *names* live in
+# Settings/.env, not here and not in pipeline code.
+#
+# Starting policy (spec section 5): Gemini is the default economical choice
+# for long/repetitive tasks once eval proves it meets the quality floor;
+# OpenAI is the higher-quality/sensitivity fallback. This is config, not an
+# if/else in a pipeline -- flip `priority` values after a live A2 eval
+# without touching any pipeline code.
 tasks:
   fahes_generate_quiz:
-    model_tier: high_quality
     prompt: fahes_generate_quiz
     max_output_tokens: 12000
     reasoning_effort: medium
     timeout_seconds: 120
-    provider_order: [openai_primary, openai_secondary]
+    candidates:
+      - {provider: gemini, quality_tier: high_quality, priority: 10}
+      - {provider: openai, quality_tier: high_quality, priority: 20}
   khota_generate_plan:
-    model_tier: balanced
     prompt: khota_generate_plan
-    max_output_tokens: 10000
+    max_output_tokens: 4000
     reasoning_effort: low
-    timeout_seconds: 90
-    provider_order: [openai_primary, openai_secondary]
+    timeout_seconds: 60
+    candidates:
+      - {provider: gemini, quality_tier: balanced, priority: 10}
+      - {provider: openai, quality_tier: balanced, priority: 20}
   rasheed_recommendations:
-    model_tier: balanced
     prompt: rasheed_recommend
     max_output_tokens: 6000
     reasoning_effort: medium
     timeout_seconds: 75
-    provider_order: [openai_primary, openai_secondary]
+    candidates:
+      - {provider: gemini, quality_tier: balanced, priority: 10}
+      - {provider: openai, quality_tier: balanced, priority: 20}
   kholasa_generate_summary:
-    model_tier: balanced
     prompt: kholasa_summarize
     max_output_tokens: 14000
     reasoning_effort: low
     timeout_seconds: 150
-    provider_order: [openai_primary, openai_secondary]
+    candidates:
+      - {provider: gemini, quality_tier: balanced, priority: 10}
+      - {provider: openai, quality_tier: balanced, priority: 20}
   sada_transcribe_audio:
-    model_tier: balanced
     prompt: sada_cleanup_transcript
     max_output_tokens: 14000
     reasoning_effort: low
     timeout_seconds: 300
-    provider_order: [openai_primary, openai_secondary]
+    candidates:
+      - {provider: gemini, quality_tier: balanced, priority: 10}
+      - {provider: openai, quality_tier: balanced, priority: 20}

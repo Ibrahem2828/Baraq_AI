@@ -3,21 +3,31 @@ from __future__ import annotations
 import json
 
 from app.core.errors import ValidationFailure
+from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult
 from app.prompts.registry import get_prompt_registry
+from app.rag.grounding import ClaimEvidenceValidator
 from app.rag.retriever import RAGRetriever
 from app.schemas.kholasa import KholasaRequest, KholasaResult
+from app.services.knowledge_policy import KnowledgePolicy
 from app.services.routing_config import get_routing_config
 
 
 class KholasaPipeline(AIPipeline):
+    knowledge_policy = KnowledgePolicy.SELECTED_SOURCES_ONLY
+    version = "2"
+
     async def execute(self, context: PipelineContext) -> PipelineResult:
         request = KholasaRequest.model_validate(context.job.request_payload)
         for source_id in request.source_ids:
             await context.ingestion.ensure_ingested(
-                source_id=source_id, user_id=context.job.user_id
+                source_id=source_id,
+                user_id=context.job.user_id,
+                expected_content_sha256=context.job.source_versions.get(source_id),
             )
-        query = "، ".join(request.focus_topics) or "الموضوعات الأساسية والتعريفات والقوانين والنتائج"
+        query = (
+            "، ".join(request.focus_topics) or "الموضوعات الأساسية والتعريفات والقوانين والنتائج"
+        )
         retriever = RAGRetriever(
             session=context.session,
             embeddings=context.ingestion.embeddings,
@@ -25,6 +35,7 @@ class KholasaPipeline(AIPipeline):
         rag = await retriever.retrieve(
             user_id=context.job.user_id,
             source_ids=request.source_ids,
+            source_versions=context.job.source_versions,
             query=query,
             routing_key=f"{context.job.id}:kholasa:rag",
         )
@@ -37,6 +48,7 @@ class KholasaPipeline(AIPipeline):
         prompt = get_prompt_registry().get(routing.prompt or "kholasa_summarize")
         context.job.prompt_name = prompt.name
         context.job.prompt_version = prompt.version
+        context.job.prompt_checksum = prompt.checksum
         user_input = prompt.render_user(
             task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
             source_context=rag.text,
@@ -49,19 +61,31 @@ class KholasaPipeline(AIPipeline):
             output_model=KholasaResult,
         )
         result = KholasaResult.model_validate(provider_result.data)
-        max_reference = len(rag.citations)
+        evidence_texts = [citation.excerpt for citation in rag.citations]
+        grounding_scores: list[float] = []
         for card in result.flashcards:
-            if any(ref < 1 or ref > max_reference for ref in card.source_references):
-                raise ValidationFailure(
-                    "A flashcard references a non-existent source chunk",
-                    code="invalid_source_reference",
-                )
+            grounding_scores.append(
+                ClaimEvidenceValidator.validate(
+                    claim=f"{card.front} {card.back}",
+                    source_references=card.source_references,
+                    evidence_texts=evidence_texts,
+                ).score
+            )
+        summary_score = ClaimEvidenceValidator.validate(
+            claim=" ".join([result.executive_summary, *result.key_points]),
+            source_references=list(range(1, len(evidence_texts) + 1)),
+            evidence_texts=evidence_texts,
+        ).score
+        groundedness = (sum(grounding_scores) + summary_score) / (len(grounding_scores) + 1)
         result = result.model_copy(update={"citations": rag.citations})
         return PipelineResult(
             result_json=result.model_dump(mode="json"),
             citations=rag.citations,
             provider_result=provider_result,
-            quality_score=max(0.0, 0.96 - 0.04 * len(result.limitations)),
-            groundedness_score=0.95,
+            quality_score=groundedness,
+            groundedness_score=groundedness,
             warnings=["suspicious_source_content"] if rag.suspicious_source_detected else [],
+            security_flags=suspicious_source_flags(request.source_ids)
+            if rag.suspicious_source_detected
+            else [],
         )

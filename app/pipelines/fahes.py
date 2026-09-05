@@ -3,20 +3,27 @@ from __future__ import annotations
 import json
 
 from app.core.errors import ValidationFailure
+from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult
 from app.prompts.registry import get_prompt_registry
-from app.rag.embeddings import EmbeddingService
+from app.rag.grounding import ClaimEvidenceValidator
 from app.rag.retriever import RAGRetriever
 from app.schemas.fahes import FahesRequest, FahesResult
+from app.services.knowledge_policy import KnowledgePolicy
 from app.services.routing_config import get_routing_config
 
 
 class FahesPipeline(AIPipeline):
+    knowledge_policy = KnowledgePolicy.SELECTED_SOURCES_ONLY
+    version = "2"
+
     async def execute(self, context: PipelineContext) -> PipelineResult:
         request = FahesRequest.model_validate(context.job.request_payload)
         for source_id in request.source_ids:
             await context.ingestion.ensure_ingested(
-                source_id=source_id, user_id=context.job.user_id
+                source_id=source_id,
+                user_id=context.job.user_id,
+                expected_content_sha256=context.job.source_versions.get(source_id),
             )
 
         query = request.topic or "المفاهيم الأساسية والقوانين والتعريفات والنقاط التي تقيس الفهم"
@@ -27,6 +34,7 @@ class FahesPipeline(AIPipeline):
         rag = await retriever.retrieve(
             user_id=context.job.user_id,
             source_ids=request.source_ids,
+            source_versions=context.job.source_versions,
             query=query,
             routing_key=f"{context.job.id}:fahes:rag",
         )
@@ -40,6 +48,7 @@ class FahesPipeline(AIPipeline):
         prompt = get_prompt_registry().get(routing.prompt or "fahes_generate_quiz")
         context.job.prompt_name = prompt.name
         context.job.prompt_version = prompt.version
+        context.job.prompt_checksum = prompt.checksum
         user_input = prompt.render_user(
             task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
             source_context=rag.text,
@@ -52,20 +61,26 @@ class FahesPipeline(AIPipeline):
             output_model=FahesResult,
         )
         result = FahesResult.model_validate(provider_result.data)
-        max_reference = len(rag.citations)
-        valid_refs = 0
-        total_refs = 0
+        evidence_texts = [citation.excerpt for citation in rag.citations]
+        grounding_scores: list[float] = []
         for question in result.questions:
-            total_refs += len(question.source_references)
-            valid_refs += sum(1 for ref in question.source_references if 1 <= ref <= max_reference)
-            if any(ref < 1 or ref > max_reference for ref in question.source_references):
-                raise ValidationFailure(
-                    "A generated question references a non-existent source chunk",
-                    code="invalid_source_reference",
-                )
+            claim = " ".join(
+                [
+                    question.question,
+                    question.choices[question.correct_answer_index],
+                    question.explanation,
+                ]
+            )
+            grounding_scores.append(
+                ClaimEvidenceValidator.validate(
+                    claim=claim,
+                    source_references=question.source_references,
+                    evidence_texts=evidence_texts,
+                ).score
+            )
         result = result.model_copy(update={"citations": rag.citations})
-        groundedness = valid_refs / total_refs if total_refs else 0.0
-        quality = max(0.0, min(1.0, 0.95 - 0.04 * len(result.warnings)))
+        groundedness = sum(grounding_scores) / len(grounding_scores) if grounding_scores else None
+        quality = groundedness
         return PipelineResult(
             result_json=result.model_dump(mode="json"),
             citations=rag.citations,
@@ -73,4 +88,7 @@ class FahesPipeline(AIPipeline):
             quality_score=quality,
             groundedness_score=groundedness,
             warnings=["suspicious_source_content"] if rag.suspicious_source_detected else [],
+            security_flags=suspicious_source_flags(request.source_ids)
+            if rag.suspicious_source_detected
+            else [],
         )

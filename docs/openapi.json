@@ -51,13 +51,28 @@
     "/api/ai/v1/jobs": {
       "post": {
         "tags": [
-          "AI Jobs"
+          "Django Gateway Jobs"
         ],
         "summary": "Create Job",
         "operationId": "create_job_api_ai_v1_jobs_post",
-        "security": [
+        "parameters": [
           {
-            "HTTPBearer": []
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 8,
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
           }
         ],
         "requestBody": {
@@ -65,7 +80,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/JobCreateRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/DjangoJobCreateRequestV2"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DjangoJobCreateRequest"
+                  }
+                ],
+                "title": "Payload"
               }
             }
           }
@@ -92,79 +115,15 @@
             }
           }
         }
-      },
-      "get": {
-        "tags": [
-          "AI Jobs"
-        ],
-        "summary": "List Jobs",
-        "operationId": "list_jobs_api_ai_v1_jobs_get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "maximum": 100,
-              "minimum": 1,
-              "default": 20,
-              "title": "Limit"
-            }
-          },
-          {
-            "name": "offset",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 0,
-              "default": 0,
-              "title": "Offset"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIEnvelope_list_JobView__"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/api/ai/v1/jobs/{job_id}": {
       "get": {
         "tags": [
-          "AI Jobs"
+          "Django Gateway Jobs"
         ],
         "summary": "Get Job",
         "operationId": "get_job_api_ai_v1_jobs__job_id__get",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "parameters": [
           {
             "name": "job_id",
@@ -172,7 +131,6 @@
             "required": true,
             "schema": {
               "type": "string",
-              "format": "uuid",
               "title": "Job Id"
             }
           }
@@ -204,15 +162,10 @@
     "/api/ai/v1/jobs/{job_id}/cancel": {
       "post": {
         "tags": [
-          "AI Jobs"
+          "Django Gateway Jobs"
         ],
         "summary": "Cancel Job",
         "operationId": "cancel_job_api_ai_v1_jobs__job_id__cancel_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
         "parameters": [
           {
             "name": "job_id",
@@ -220,7 +173,6 @@
             "required": true,
             "schema": {
               "type": "string",
-              "format": "uuid",
               "title": "Job Id"
             }
           }
@@ -252,7 +204,7 @@
     "/api/ai/v1/feedback": {
       "post": {
         "tags": [
-          "AI Feedback"
+          "Django Gateway Feedback"
         ],
         "summary": "Create Feedback",
         "operationId": "create_feedback_api_ai_v1_feedback_post",
@@ -260,7 +212,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/FeedbackCreate"
+                "$ref": "#/components/schemas/DjangoFeedbackCreate"
               }
             }
           },
@@ -287,333 +239,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
-      }
-    },
-    "/api/ai/v1/fahes/quizzes": {
-      "post": {
-        "tags": [
-          "Baraq Characters"
-        ],
-        "summary": "Fahes Quiz",
-        "operationId": "fahes_quiz_api_ai_v1_fahes_quizzes_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 128,
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FahesRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIEnvelope_JobAccepted_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
         }
-      }
-    },
-    "/api/ai/v1/khota/plans": {
-      "post": {
-        "tags": [
-          "Baraq Characters"
-        ],
-        "summary": "Khota Plan",
-        "operationId": "khota_plan_api_ai_v1_khota_plans_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 128,
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KhotaRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIEnvelope_JobAccepted_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ai/v1/rasheed/recommendations": {
-      "post": {
-        "tags": [
-          "Baraq Characters"
-        ],
-        "summary": "Rasheed Recommendations",
-        "operationId": "rasheed_recommendations_api_ai_v1_rasheed_recommendations_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 128,
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RasheedRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIEnvelope_JobAccepted_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ai/v1/kholasa/summaries": {
-      "post": {
-        "tags": [
-          "Baraq Characters"
-        ],
-        "summary": "Kholasa Summary",
-        "operationId": "kholasa_summary_api_ai_v1_kholasa_summaries_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 128,
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/KholasaRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIEnvelope_JobAccepted_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ai/v1/sada/transcriptions": {
-      "post": {
-        "tags": [
-          "Baraq Characters"
-        ],
-        "summary": "Sada Transcription",
-        "operationId": "sada_transcription_api_ai_v1_sada_transcriptions_post",
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 128,
-              "title": "Idempotency-Key"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SadaRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "202": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIEnvelope_JobAccepted_"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/ai/v1/admin/configuration": {
-      "get": {
-        "tags": [
-          "AI Administration"
-        ],
-        "summary": "Configuration",
-        "operationId": "configuration_api_ai_v1_admin_configuration_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/APIEnvelope_dict_"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
       }
     }
   },
@@ -767,86 +393,6 @@
         "type": "object",
         "title": "APIEnvelope[JobView]"
       },
-      "APIEnvelope_dict_": {
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "title": "Success",
-            "default": true
-          },
-          "data": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/APIError"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "meta": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Meta"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "title": "APIEnvelope[dict]"
-      },
-      "APIEnvelope_list_JobView__": {
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "title": "Success",
-            "default": true
-          },
-          "data": {
-            "anyOf": [
-              {
-                "items": {
-                  "$ref": "#/components/schemas/JobView"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/APIError"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "meta": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Meta"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "title": "APIEnvelope[list[JobView]]"
-      },
       "APIError": {
         "properties": {
           "code": {
@@ -902,9 +448,34 @@
       },
       "Citation": {
         "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
           "source_id": {
             "type": "string",
             "title": "Source Id"
+          },
+          "content_sha256": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64,
+                "minLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Sha256"
           },
           "chunk_id": {
             "anyOf": [
@@ -959,6 +530,45 @@
               }
             ],
             "title": "Relevance Score"
+          },
+          "semantic_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semantic Score"
+          },
+          "lexical_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lexical Score"
+          },
+          "rerank_score": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 1.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerank Score"
           }
         },
         "additionalProperties": false,
@@ -969,92 +579,7 @@
         ],
         "title": "Citation"
       },
-      "FahesRequest": {
-        "properties": {
-          "source_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Source Ids"
-          },
-          "subject_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject Id"
-          },
-          "topic": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 300
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Topic"
-          },
-          "question_count": {
-            "type": "integer",
-            "maximum": 50.0,
-            "minimum": 3.0,
-            "title": "Question Count",
-            "default": 10
-          },
-          "difficulty": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/QuestionDifficulty"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "question_types": {
-            "items": {
-              "$ref": "#/components/schemas/QuestionKind"
-            },
-            "type": "array",
-            "minItems": 1,
-            "title": "Question Types"
-          },
-          "language": {
-            "type": "string",
-            "pattern": "^(ar|en)$",
-            "title": "Language",
-            "default": "ar"
-          },
-          "instructions": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Instructions"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "source_ids"
-        ],
-        "title": "FahesRequest"
-      },
-      "FeedbackCreate": {
+      "DjangoFeedbackCreate": {
         "properties": {
           "output_id": {
             "type": "string",
@@ -1112,6 +637,12 @@
             "additionalProperties": true,
             "type": "object",
             "title": "Implicit Signals"
+          },
+          "user_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "User Id"
           }
         },
         "additionalProperties": false,
@@ -1119,9 +650,108 @@
         "required": [
           "output_id",
           "rating",
-          "is_helpful"
+          "is_helpful",
+          "user_id"
         ],
-        "title": "FeedbackCreate"
+        "title": "DjangoFeedbackCreate",
+        "description": "Django-authenticated feedback payload; Django supplies the authoritative user."
+      },
+      "DjangoJobCreateRequest": {
+        "properties": {
+          "client_job_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Client Job Id"
+          },
+          "user_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "User Id"
+          },
+          "task_type": {
+            "$ref": "#/components/schemas/TaskType"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input"
+          },
+          "model_tier": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "fast",
+                  "balanced",
+                  "high_quality"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Tier"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "client_job_id",
+          "user_id",
+          "task_type",
+          "input"
+        ],
+        "title": "DjangoJobCreateRequest",
+        "description": "Deprecated V1 compatibility adapter; V2 is the only primary contract."
+      },
+      "DjangoJobCreateRequestV2": {
+        "properties": {
+          "contract_version": {
+            "type": "string",
+            "const": "2.0",
+            "title": "Contract Version"
+          },
+          "client_job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Client Job Id"
+          },
+          "user_id": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "User Id"
+          },
+          "task_type": {
+            "$ref": "#/components/schemas/TaskType"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input"
+          },
+          "model_policy": {
+            "$ref": "#/components/schemas/ModelPolicy"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/TraceContext"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "contract_version",
+          "client_job_id",
+          "user_id",
+          "task_type",
+          "input",
+          "model_policy",
+          "trace"
+        ],
+        "title": "DjangoJobCreateRequestV2",
+        "description": "The strict, versioned Django -> AI job contract."
       },
       "FeedbackIssue": {
         "type": "string",
@@ -1208,6 +838,17 @@
             ],
             "title": "Redis"
           },
+          "migrations": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Migrations"
+          },
           "timestamp": {
             "type": "string",
             "format": "date-time",
@@ -1228,8 +869,12 @@
         "properties": {
           "job_id": {
             "type": "string",
-            "format": "uuid",
             "title": "Job Id"
+          },
+          "ai_job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ai Job Id"
           },
           "status": {
             "$ref": "#/components/schemas/JobStatus"
@@ -1265,71 +910,13 @@
         "type": "object",
         "required": [
           "job_id",
+          "ai_job_id",
           "status",
           "task_type",
           "character",
           "status_url"
         ],
         "title": "JobAccepted"
-      },
-      "JobCreateRequest": {
-        "properties": {
-          "task_type": {
-            "$ref": "#/components/schemas/TaskType"
-          },
-          "payload": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Payload"
-          },
-          "idempotency_key": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 8,
-            "title": "Idempotency Key"
-          },
-          "backend_request_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 128
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Backend Request Id"
-          },
-          "model_tier": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "fast",
-                  "balanced",
-                  "high_quality"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Tier"
-          },
-          "force_refresh": {
-            "type": "boolean",
-            "title": "Force Refresh",
-            "default": false
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "task_type",
-          "payload",
-          "idempotency_key"
-        ],
-        "title": "JobCreateRequest"
       },
       "JobOutputView": {
         "properties": {
@@ -1384,27 +971,45 @@
             "type": "string",
             "title": "Provider Account"
           },
-          "materialized_resource_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Materialized Resource Type"
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
           },
-          "materialized_resource_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Materialized Resource Id"
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "total_tokens": {
+            "type": "integer",
+            "title": "Total Tokens",
+            "default": 0
+          },
+          "estimated_cost_usd": {
+            "type": "number",
+            "title": "Estimated Cost Usd",
+            "default": 0.0
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "security_flags": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Security Flags"
+          },
+          "validation_report": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Validation Report"
           }
         },
         "additionalProperties": false,
@@ -1422,10 +1027,12 @@
         "type": "string",
         "enum": [
           "queued",
-          "processing",
+          "preparing",
           "retrieving",
+          "planning",
           "generating",
           "validating",
+          "repairing",
           "materializing",
           "completed",
           "failed",
@@ -1437,8 +1044,17 @@
         "properties": {
           "job_id": {
             "type": "string",
-            "format": "uuid",
             "title": "Job Id"
+          },
+          "ai_job_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Ai Job Id"
+          },
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
           },
           "task_type": {
             "$ref": "#/components/schemas/TaskType"
@@ -1447,6 +1063,9 @@
             "$ref": "#/components/schemas/Character"
           },
           "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "stage": {
             "$ref": "#/components/schemas/JobStatus"
           },
           "progress_percent": {
@@ -1530,9 +1149,12 @@
         "type": "object",
         "required": [
           "job_id",
+          "ai_job_id",
+          "request_id",
           "task_type",
           "character",
           "status",
+          "stage",
           "progress_percent",
           "progress_message",
           "created_at",
@@ -1540,376 +1162,55 @@
         ],
         "title": "JobView"
       },
-      "KholasaRequest": {
+      "ModelPolicy": {
         "properties": {
-          "source_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "minItems": 1,
-            "title": "Source Ids"
-          },
-          "summary_length": {
-            "$ref": "#/components/schemas/SummaryLength",
-            "default": "medium"
-          },
-          "focus_topics": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 30,
-            "title": "Focus Topics"
-          },
-          "include_review_questions": {
-            "type": "boolean",
-            "title": "Include Review Questions",
-            "default": true
-          },
-          "include_flashcards": {
-            "type": "boolean",
-            "title": "Include Flashcards",
-            "default": true
-          },
-          "language": {
+          "tier": {
             "type": "string",
-            "pattern": "^(ar|en)$",
-            "title": "Language",
-            "default": "ar"
-          },
-          "instructions": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 1000
-              },
-              {
-                "type": "null"
-              }
+            "enum": [
+              "fast",
+              "balanced",
+              "high_quality"
             ],
-            "title": "Instructions"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "source_ids"
-        ],
-        "title": "KholasaRequest"
-      },
-      "KhotaRequest": {
-        "properties": {
-          "source_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "title": "Source Ids"
+            "title": "Tier"
           },
-          "subject_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 20,
-            "minItems": 1,
-            "title": "Subject Ids"
-          },
-          "start_date": {
-            "type": "string",
-            "format": "date",
-            "title": "Start Date"
-          },
-          "end_date": {
-            "type": "string",
-            "format": "date",
-            "title": "End Date"
-          },
-          "daily_available_minutes": {
-            "type": "integer",
-            "maximum": 720.0,
-            "minimum": 20.0,
-            "title": "Daily Available Minutes"
-          },
-          "exam_dates": {
-            "additionalProperties": {
-              "type": "string",
-              "format": "date"
-            },
-            "type": "object",
-            "title": "Exam Dates"
-          },
-          "weak_topics": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 50,
-            "title": "Weak Topics"
-          },
-          "excluded_dates": {
-            "items": {
-              "type": "string",
-              "format": "date"
-            },
-            "type": "array",
-            "maxItems": 60,
-            "title": "Excluded Dates"
-          },
-          "preferred_session_minutes": {
-            "type": "integer",
-            "maximum": 180.0,
-            "minimum": 15.0,
-            "title": "Preferred Session Minutes",
-            "default": 45
-          },
-          "language": {
-            "type": "string",
-            "pattern": "^(ar|en)$",
-            "title": "Language",
-            "default": "ar"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "subject_ids",
-          "start_date",
-          "end_date",
-          "daily_available_minutes"
-        ],
-        "title": "KhotaRequest"
-      },
-      "PerformanceMetric": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Name"
-          },
-          "value": {
-            "type": "number",
-            "title": "Value"
-          },
-          "unit": {
-            "type": "string",
-            "maxLength": 30,
-            "title": "Unit"
-          },
-          "period": {
-            "type": "string",
-            "maxLength": 100,
-            "title": "Period"
-          },
-          "authoritative": {
+          "allow_fallback": {
             "type": "boolean",
-            "title": "Authoritative",
-            "default": true
+            "title": "Allow Fallback"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "name",
-          "value",
-          "unit",
-          "period"
+          "tier",
+          "allow_fallback"
         ],
-        "title": "PerformanceMetric"
-      },
-      "QuestionDifficulty": {
-        "type": "string",
-        "enum": [
-          "easy",
-          "medium",
-          "hard"
-        ],
-        "title": "QuestionDifficulty"
-      },
-      "QuestionKind": {
-        "type": "string",
-        "enum": [
-          "mcq",
-          "true_false"
-        ],
-        "title": "QuestionKind"
-      },
-      "RasheedRequest": {
-        "properties": {
-          "metrics": {
-            "items": {
-              "$ref": "#/components/schemas/PerformanceMetric"
-            },
-            "type": "array",
-            "maxItems": 100,
-            "minItems": 1,
-            "title": "Metrics"
-          },
-          "topic_performance": {
-            "items": {
-              "$ref": "#/components/schemas/TopicPerformance"
-            },
-            "type": "array",
-            "maxItems": 100,
-            "title": "Topic Performance"
-          },
-          "recent_actions": {
-            "items": {
-              "additionalProperties": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "integer"
-                  },
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "type": "object"
-            },
-            "type": "array",
-            "maxItems": 200,
-            "title": "Recent Actions"
-          },
-          "learner_goal": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 500
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Learner Goal"
-          },
-          "language": {
-            "type": "string",
-            "pattern": "^(ar|en)$",
-            "title": "Language",
-            "default": "ar"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "metrics"
-        ],
-        "title": "RasheedRequest"
-      },
-      "SadaRequest": {
-        "properties": {
-          "source_id": {
-            "type": "string",
-            "title": "Source Id"
-          },
-          "language": {
-            "type": "string",
-            "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
-            "title": "Language",
-            "default": "ar"
-          },
-          "diarize": {
-            "type": "boolean",
-            "title": "Diarize",
-            "default": false
-          },
-          "known_terms": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 200,
-            "title": "Known Terms"
-          },
-          "cleanup_level": {
-            "type": "string",
-            "pattern": "^(literal|light|educational)$",
-            "title": "Cleanup Level",
-            "default": "educational"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "source_id"
-        ],
-        "title": "SadaRequest"
-      },
-      "SummaryLength": {
-        "type": "string",
-        "enum": [
-          "short",
-          "medium",
-          "detailed"
-        ],
-        "title": "SummaryLength"
+        "title": "ModelPolicy"
       },
       "TaskType": {
         "type": "string",
         "enum": [
           "fahes_generate_quiz",
           "khota_generate_plan",
-          "rasheed_recommend",
-          "kholasa_summarize",
-          "sada_transcribe",
-          "source_ingest"
+          "rasheed_recommendations",
+          "kholasa_generate_summary",
+          "sada_transcribe_audio"
         ],
         "title": "TaskType"
       },
-      "TopicPerformance": {
+      "TraceContext": {
         "properties": {
-          "topic": {
+          "request_id": {
             "type": "string",
-            "maxLength": 300,
-            "minLength": 1,
-            "title": "Topic"
-          },
-          "score": {
-            "type": "number",
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Score"
-          },
-          "answered_questions": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Answered Questions"
-          },
-          "average_time_seconds": {
-            "anyOf": [
-              {
-                "type": "number",
-                "minimum": 0.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Average Time Seconds"
+            "format": "uuid",
+            "title": "Request Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
-          "topic",
-          "score",
-          "answered_questions"
+          "request_id"
         ],
-        "title": "TopicPerformance"
+        "title": "TraceContext"
       },
       "ValidationError": {
         "properties": {
@@ -1950,12 +1251,6 @@
           "type"
         ],
         "title": "ValidationError"
-      }
-    },
-    "securitySchemes": {
-      "HTTPBearer": {
-        "type": "http",
-        "scheme": "bearer"
       }
     }
   }

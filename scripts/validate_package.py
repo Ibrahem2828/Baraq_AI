@@ -7,11 +7,27 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+EXCLUDED_DIRECTORIES = {
+    ".baraq_lab",
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "venv",
+}
+
+
+def is_project_file(path: pathlib.Path) -> bool:
+    return not any(part in EXCLUDED_DIRECTORIES for part in path.relative_to(ROOT).parts)
 
 
 def main() -> int:
     errors: list[str] = []
-    python_files = list(ROOT.rglob("*.py"))
+    python_files = [path for path in ROOT.rglob("*.py") if is_project_file(path)]
     for path in python_files:
         try:
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -31,8 +47,9 @@ def main() -> int:
             errors.append(f"Missing required file: {name}")
 
     secret_pattern = re.compile(r"sk-[A-Za-z0-9_-]{20,}")
+    supported_suffixes = {".py", ".md", ".yaml", ".yml", ".toml", ".example"}
     for path in ROOT.rglob("*"):
-        if path.is_file() and path.suffix.lower() in {".py", ".md", ".yaml", ".yml", ".toml", ".example"}:
+        if is_project_file(path) and path.is_file() and path.suffix.lower() in supported_suffixes:
             text = path.read_text(encoding="utf-8", errors="ignore")
             if secret_pattern.search(text):
                 errors.append(f"Possible OpenAI secret found in {path.relative_to(ROOT)}")

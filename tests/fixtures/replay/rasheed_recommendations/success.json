@@ -1,0 +1,21 @@
+{
+  "kind": "success",
+  "payload": {
+    "performance_summary": "أداء محفوظ عبر Replay يستند حصراً إلى المقاييس الموثوقة المرسلة من Django لهذا الثابت.",
+    "strengths": ["اتساق في الحضور وفق المقاييس المرسلة"],
+    "weaknesses": ["ضعف نسبي في الموضوع المذكور في topic_performance"],
+    "recommendations": [
+      {
+        "title": "مراجعة الموضوع الأضعف",
+        "action": "أعد حل أسئلة الموضوع الأضعف المذكور في topic_performance خلال هذا الأسبوع.",
+        "reason": "المقياس المرسل يظهر درجة أقل من المتوسط في هذا الموضوع تحديداً.",
+        "priority": "this_week",
+        "success_measure": "ارتفاع الدرجة في محاولة الاختبار التالية لنفس الموضوع.",
+        "related_topics": ["موضوع Replay"]
+      }
+    ],
+    "next_best_action": "ابدأ بمراجعة الموضوع الأضعف المذكور أعلاه خلال الأسبوع الحالي.",
+    "confidence_note": "استنتاج وصفي غير معايَر إحصائياً، مبني فقط على المقاييس الموثوقة المرسلة."
+  },
+  "usage": {"input_tokens": 600, "output_tokens": 310, "total_tokens": 910}
+}

@@ -8,12 +8,15 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel, ValidationError
 
 from app.core.errors import ProviderError, ValidationFailure
-from app.models.enums import ProviderAccount
+from app.models.enums import Provider, ProviderAccount
 from app.providers.base import LLMProvider, ProviderResult, ProviderUsage, TranscriptionResult
 from app.services.cost import get_cost_calculator
+from app.utils.json_schema import to_openai_strict_schema
 
 
 class OpenAIProvider(LLMProvider):
+    provider_family = Provider.OPENAI
+
     def __init__(
         self,
         *,
@@ -63,7 +66,7 @@ class OpenAIProvider(LLMProvider):
         metadata: dict[str, str],
     ) -> ProviderResult:
         started = time.perf_counter()
-        schema = output_model.model_json_schema()
+        schema = to_openai_strict_schema(output_model.model_json_schema())
         request: dict[str, Any] = {
             "model": model,
             "instructions": instructions,

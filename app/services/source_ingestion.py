@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -35,8 +33,15 @@ class SourceIngestionService:
             overlap=self.settings.rag_chunk_overlap_chars,
         )
 
-    async def ensure_ingested(self, *, source_id: str, user_id: str) -> SourceManifest:
-        manifest = await self.backend.get_source_manifest(source_id=source_id)
+    async def ensure_ingested(
+        self, *, source_id: str, user_id: str, expected_content_sha256: str | None = None
+    ) -> SourceManifest:
+        manifest = await self.backend.get_source_manifest(source_id=source_id, user_id=user_id)
+        if expected_content_sha256 and manifest.content_sha256 != expected_content_sha256:
+            raise ValidationFailure(
+                "Source changed after the job was accepted",
+                code="source_version_changed",
+            )
         existing = await self.repository.get_document_version(
             backend_source_id=manifest.source_id,
             content_sha256=manifest.content_sha256,
@@ -49,7 +54,7 @@ class SourceIngestionService:
                 "Source file exceeds the configured size limit",
                 code="source_too_large",
             )
-        content = await self.backend.download_source(source_id=manifest.source_id)
+        content = await self.backend.download_source(manifest=manifest, user_id=user_id)
         if len(content) != manifest.size_bytes:
             raise ValidationFailure(
                 "Downloaded source size does not match the backend manifest",

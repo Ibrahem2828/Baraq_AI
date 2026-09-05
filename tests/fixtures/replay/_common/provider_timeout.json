@@ -1,0 +1,6 @@
+{
+  "kind": "error",
+  "code": "provider_timeout",
+  "message": "Replay fixture simulates a provider request timeout.",
+  "retryable": true
+}

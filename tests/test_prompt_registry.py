@@ -1,5 +1,5 @@
-from app.prompts.registry import PromptRegistry
 from app.core.config import get_settings
+from app.prompts.registry import PromptRegistry
 
 
 def test_all_character_prompts_exist() -> None:

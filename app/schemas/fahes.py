@@ -42,7 +42,7 @@ class FahesQuestion(StrictModel):
     source_references: list[int] = Field(min_length=1, max_length=5)
 
     @model_validator(mode="after")
-    def validate_question(self) -> "FahesQuestion":
+    def validate_question(self) -> FahesQuestion:
         if self.correct_answer_index >= len(self.choices):
             raise ValueError("correct_answer_index must reference an existing choice")
         normalized = [choice.strip().casefold() for choice in self.choices]

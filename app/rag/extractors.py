@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass
 from pathlib import Path
+from typing import ClassVar
 
 from docx import Document
 from pptx import Presentation
@@ -29,7 +30,12 @@ class ExtractedDocument:
 
 
 class DocumentExtractor:
-    TEXT_TYPES = {"text/plain", "text/markdown", "text/csv", "application/json"}
+    TEXT_TYPES: ClassVar[set[str]] = {
+        "text/plain",
+        "text/markdown",
+        "text/csv",
+        "application/json",
+    }
 
     def extract(self, *, filename: str, mime_type: str, content: bytes) -> ExtractedDocument:
         suffix = Path(filename).suffix.lower()
@@ -38,14 +44,12 @@ class DocumentExtractor:
         if mime_type == "application/pdf" or suffix == ".pdf":
             return self._extract_pdf(content)
         if (
-            mime_type
-            == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             or suffix == ".docx"
         ):
             return self._extract_docx(content)
         if (
-            mime_type
-            == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
             or suffix == ".pptx"
         ):
             return self._extract_pptx(content)
@@ -73,7 +77,7 @@ class DocumentExtractor:
     def _extract_pdf(self, content: bytes) -> ExtractedDocument:
         try:
             reader = PdfReader(io.BytesIO(content))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ValidationFailure("Unable to read PDF", code="pdf_read_failed") from exc
         pages: list[ExtractedPage] = []
         for index, page in enumerate(reader.pages, start=1):
@@ -93,7 +97,7 @@ class DocumentExtractor:
     def _extract_docx(self, content: bytes) -> ExtractedDocument:
         try:
             document = Document(io.BytesIO(content))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ValidationFailure("Unable to read DOCX", code="docx_read_failed") from exc
         blocks: list[str] = []
         current_heading: str | None = None
@@ -111,20 +115,43 @@ class DocumentExtractor:
                 blocks.append(text)
         if blocks:
             pages.append(ExtractedPage(None, "\n".join(blocks), current_heading))
+        # `python-docx` exposes tables separately from paragraphs.  Append a
+        # compact, searchable representation instead of silently discarding
+        # source facts that happen to be tabular.
+        table_blocks = [self._docx_table_text(table) for table in document.tables]
+        table_blocks = [block for block in table_blocks if block]
+        if table_blocks:
+            pages.append(ExtractedPage(None, "\n\n".join(table_blocks), "Tables"))
         if not pages:
             raise ValidationFailure("DOCX contains no readable text", code="empty_source")
         return ExtractedDocument(pages, {"extractor": "python-docx"})
 
+    @staticmethod
+    def _docx_table_text(table: object) -> str:
+        rows = getattr(table, "rows", [])
+        rendered: list[str] = []
+        for row in rows:
+            values = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+            if any(values):
+                rendered.append(" | ".join(values))
+        return "\n".join(rendered)
+
     def _extract_pptx(self, content: bytes) -> ExtractedDocument:
         try:
             presentation = Presentation(io.BytesIO(content))
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise ValidationFailure("Unable to read PPTX", code="pptx_read_failed") from exc
         pages: list[ExtractedPage] = []
         for slide_no, slide in enumerate(presentation.slides, start=1):
             texts: list[str] = []
             title: str | None = None
             for shape in slide.shapes:
+                if getattr(shape, "has_table", False):
+                    rows = [
+                        " | ".join(cell.text.strip().replace("\n", " ") for cell in row.cells)
+                        for row in shape.table.rows
+                    ]
+                    texts.extend(row for row in rows if row.strip(" |"))
                 if not hasattr(shape, "text"):
                     continue
                 value = str(shape.text).strip()

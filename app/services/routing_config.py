@@ -9,17 +9,24 @@ import yaml
 
 from app.core.config import get_settings
 from app.core.errors import NotFoundError
+from app.models.enums import Provider, QualityTier
+
+
+@dataclass(frozen=True, slots=True)
+class RoutingCandidateSpec:
+    provider: Provider
+    quality_tier: QualityTier
+    priority: int
 
 
 @dataclass(frozen=True, slots=True)
 class TaskRouting:
     task_type: str
-    model_tier: str
     prompt: str | None
     max_output_tokens: int
     reasoning_effort: str | None
     timeout_seconds: int
-    provider_order: list[str]
+    candidates: list[RoutingCandidateSpec]
 
 
 class RoutingConfig:
@@ -33,14 +40,23 @@ class RoutingConfig:
             raw = self.tasks[task_type]
         except KeyError as exc:
             raise NotFoundError(f"No routing configuration for task '{task_type}'") from exc
+        candidates = [
+            RoutingCandidateSpec(
+                provider=Provider(item["provider"]),
+                quality_tier=QualityTier(item.get("quality_tier", "balanced")),
+                priority=int(item.get("priority", index * 10)),
+            )
+            for index, item in enumerate(raw.get("candidates", []), start=1)
+        ]
+        if not candidates:
+            raise ValueError(f"Task '{task_type}' has no routing candidates configured")
         return TaskRouting(
             task_type=task_type,
-            model_tier=str(raw.get("model_tier", "balanced")),
             prompt=raw.get("prompt"),
             max_output_tokens=int(raw.get("max_output_tokens", 8000)),
             reasoning_effort=raw.get("reasoning_effort"),
             timeout_seconds=int(raw.get("timeout_seconds", 120)),
-            provider_order=list(raw.get("provider_order", [])),
+            candidates=sorted(candidates, key=lambda item: item.priority),
         )
 
 

@@ -10,5 +10,6 @@ def stable_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def build_idempotency_scope(*, user_id: str, task_type: str, key: str) -> str:
-    return hashlib.sha256(f"{user_id}:{task_type}:{key}".encode()).hexdigest()
+def build_idempotency_scope(*, user_id: str, client_job_id: str) -> str:
+    """Hash the contract's idempotency boundary without storing it as a secret."""
+    return hashlib.sha256(f"{user_id}:{client_job_id}".encode()).hexdigest()

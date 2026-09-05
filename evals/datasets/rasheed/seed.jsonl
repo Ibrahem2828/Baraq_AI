@@ -1,0 +1,2 @@
+{"id": "rasheed-001", "task_type": "rasheed_recommendations", "sources": [], "input": {"metrics": [{"name": "quiz_accuracy", "value": 55, "unit": "percent", "period": "last_week", "authoritative": true}], "topic_performance": [{"topic": "algebra", "score": 48, "answered_questions": 12}], "language": "en"}}
+{"id": "rasheed-002", "task_type": "rasheed_recommendations", "sources": [], "input": {"metrics": [{"name": "quiz_accuracy", "value": 82, "unit": "percent", "period": "last_week", "authoritative": true}], "topic_performance": [], "language": "ar"}}

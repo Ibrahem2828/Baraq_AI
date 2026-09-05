@@ -35,7 +35,7 @@ class SourceDocument(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     metadata_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     extraction_error: Mapped[str | None] = mapped_column(Text)
 
-    chunks: Mapped[list["SourceChunk"]] = relationship(
+    chunks: Mapped[list[SourceChunk]] = relationship(
         back_populates="document", cascade="all, delete-orphan"
     )
 

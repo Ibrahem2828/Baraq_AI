@@ -21,19 +21,45 @@ class Character(StrEnum):
 
 class JobStatus(StrEnum):
     QUEUED = "queued"
-    PROCESSING = "processing"
+    PREPARING = "preparing"
     RETRIEVING = "retrieving"
+    PLANNING = "planning"
     GENERATING = "generating"
     VALIDATING = "validating"
+    REPAIRING = "repairing"
     MATERIALIZING = "materializing"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELED = "canceled"
 
 
+class DispatchOutboxStatus(StrEnum):
+    PENDING = "pending"
+    DISPATCHING = "dispatching"
+    DISPATCHED = "dispatched"
+
+
+class Provider(StrEnum):
+    """Approved provider families. No other provider may appear here."""
+
+    GEMINI = "gemini"
+    OPENAI = "openai"
+    MOCK = "mock"
+    REPLAY = "replay"
+
+
 class ProviderAccount(StrEnum):
     PRIMARY = "openai_primary"
     SECONDARY = "openai_secondary"
+    GEMINI_PRIMARY = "gemini_primary"
+    MOCK = "mock"
+    REPLAY = "replay"
+
+
+class QualityTier(StrEnum):
+    FAST = "fast"
+    BALANCED = "balanced"
+    HIGH_QUALITY = "high_quality"
 
 
 class ProviderAttemptStatus(StrEnum):

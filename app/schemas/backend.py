@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import Field
@@ -15,6 +15,8 @@ class SourceManifest(StrictModel):
     mime_type: str
     size_bytes: int = Field(ge=0)
     content_sha256: str = Field(min_length=64, max_length=64)
+    download_url: str | None = None
+    download_url_expires_at: datetime | None = None
     subject_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 

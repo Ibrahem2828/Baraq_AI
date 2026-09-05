@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from app.models.enums import ProviderAccount
+from app.models.enums import Provider, ProviderAccount
 
 
 @dataclass(slots=True)
@@ -44,6 +44,7 @@ class TranscriptionResult:
 
 class LLMProvider(ABC):
     account: ProviderAccount
+    provider_family: Provider
 
     @abstractmethod
     async def generate_structured(

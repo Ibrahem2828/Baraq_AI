@@ -1,0 +1,33 @@
+{
+  "kind": "success",
+  "payload": {
+    "title": "اختبار Replay على مصدر تجريبي",
+    "description": "أسئلة مبنية على ثابت Replay محفوظ مسبقاً لاختبارات التكامل.",
+    "questions": [
+      {
+        "question_type": "mcq",
+        "question": "وفق المصدر المرفق، ما المفهوم الرئيسي في المقطع الأول؟",
+        "choices": ["المفهوم الأول", "المفهوم الثاني", "المفهوم الثالث", "لا شيء مما سبق"],
+        "correct_answer_index": 0,
+        "explanation": "المقطع الأول من المصدر يعرّف المفهوم الأول بوضوح كمحور رئيسي.",
+        "difficulty": "medium",
+        "topic": "موضوع Replay",
+        "source_references": [1]
+      },
+      {
+        "question_type": "true_false",
+        "question": "هل يذكر المصدر أن المفهوم الثاني فرعي من المفهوم الأول؟",
+        "choices": ["صحيح", "خطأ"],
+        "correct_answer_index": 1,
+        "explanation": "المصدر يعرض المفهومين كمفهومين مستقلين لا علاقة تبعية بينهما.",
+        "difficulty": "easy",
+        "topic": "موضوع Replay",
+        "source_references": [1]
+      }
+    ],
+    "covered_topics": ["موضوع Replay"],
+    "warnings": [],
+    "citations": []
+  },
+  "usage": {"input_tokens": 850, "output_tokens": 420, "total_tokens": 1270}
+}

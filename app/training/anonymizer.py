@@ -17,20 +17,20 @@ def anonymize_value(value: Any) -> tuple[Any, dict[str, int]]:
         merge(local)
         return cleaned, report
     if isinstance(value, list):
-        output = []
+        list_output = []
         for item in value:
             cleaned, local = anonymize_value(item)
-            output.append(cleaned)
+            list_output.append(cleaned)
             merge(local)
-        return output, report
+        return list_output, report
     if isinstance(value, dict):
-        output: dict[str, Any] = {}
+        dict_output: dict[str, Any] = {}
         for key, item in value.items():
             if key.lower() in {"email", "phone", "phone_number", "full_name", "name"}:
-                output[key] = "[REDACTED]"
+                dict_output[key] = "[REDACTED]"
                 continue
             cleaned, local = anonymize_value(item)
-            output[key] = cleaned
+            dict_output[key] = cleaned
             merge(local)
-        return output, report
+        return dict_output, report
     return value, report

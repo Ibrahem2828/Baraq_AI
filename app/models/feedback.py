@@ -8,14 +8,12 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import CandidateStatus, FeedbackIssue
+from app.models.enums import CandidateStatus
 
 
 class AIFeedback(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "ai_feedback"
-    __table_args__ = (
-        UniqueConstraint("output_id", "user_id", name="uq_feedback_output_user"),
-    )
+    __table_args__ = (UniqueConstraint("output_id", "user_id", name="uq_feedback_output_user"),)
 
     output_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("ai_outputs.id", ondelete="CASCADE"), index=True

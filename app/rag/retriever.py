@@ -37,6 +37,7 @@ class RAGRetriever:
         *,
         user_id: str,
         source_ids: list[str],
+        source_versions: dict[str, str],
         query: str,
         routing_key: str,
     ) -> RAGContext:
@@ -44,6 +45,7 @@ class RAGRetriever:
         chunks = await self.repository.retrieve(
             user_id=user_id,
             source_ids=source_ids,
+            source_versions=source_versions,
             query_embedding=query_vector,
             limit=self.settings.rag_top_k,
             min_similarity=self.settings.rag_min_similarity,
@@ -72,12 +74,17 @@ class RAGRetriever:
             consumed += len(block)
             citations.append(
                 Citation(
+                    evidence_id=chunk.chunk_id,
                     source_id=chunk.source_id,
+                    content_sha256=chunk.content_sha256,
                     chunk_id=chunk.chunk_id,
                     page_number=chunk.page_number,
                     section_title=chunk.section_title,
                     excerpt=chunk.text[:1200],
                     relevance_score=chunk.score,
+                    semantic_score=chunk.semantic_score,
+                    lexical_score=chunk.lexical_score,
+                    rerank_score=chunk.rerank_score,
                 )
             )
         return RAGContext("\n\n".join(context_parts), citations, chunks, suspicious)

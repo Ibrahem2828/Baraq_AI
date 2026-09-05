@@ -35,7 +35,8 @@ def test_gateway_job_routes_require_django_service_signature() -> None:
     assert "DjangoService" in jobs
     assert "DjangoService" in feedback
     assert "async def require_django_service(request: Request)" in dependencies
-    assert "verify_service_signature(" in dependencies
+    assert "verify_and_consume_service_signature(" in dependencies
+    assert "X-Baraq-Key-Id" not in dependencies  # header handling is centralized in security.py
     assert "HTTPBearer" not in dependencies
     assert "decode_access_token" not in dependencies
 

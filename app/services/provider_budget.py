@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,16 +22,24 @@ class ProviderBudgetService:
         return datetime.now(UTC).strftime("%Y-%m")
 
     def budget_for(self, account: ProviderAccount) -> float:
-        if account == ProviderAccount.PRIMARY:
-            return self.settings.openai_primary_monthly_budget_usd
-        return self.settings.openai_secondary_monthly_budget_usd
+        # Mock/Replay accounts fall through to 0.0, which `has_budget` below
+        # treats as "no cap" -- consistent, since they never incur real cost.
+        mapping = {
+            ProviderAccount.PRIMARY: self.settings.openai_primary_monthly_budget_usd,
+            ProviderAccount.SECONDARY: self.settings.openai_secondary_monthly_budget_usd,
+            ProviderAccount.GEMINI_PRIMARY: self.settings.gemini_primary_monthly_budget_usd,
+        }
+        return mapping.get(account, 0.0)
 
     async def usage_for(self, account: ProviderAccount) -> ProviderUsageMonth | None:
-        return await self.session.scalar(
-            select(ProviderUsageMonth).where(
-                ProviderUsageMonth.provider_account == account,
-                ProviderUsageMonth.year_month == self.current_month(),
-            )
+        return cast(
+            ProviderUsageMonth | None,
+            await self.session.scalar(
+                select(ProviderUsageMonth).where(
+                    ProviderUsageMonth.provider_account == account,
+                    ProviderUsageMonth.year_month == self.current_month(),
+                )
+            ),
         )
 
     async def has_budget(self, account: ProviderAccount) -> bool:
@@ -52,6 +61,4 @@ class ProviderBudgetService:
         usage.request_count += 1
         usage.input_tokens += result.usage.input_tokens
         usage.output_tokens += result.usage.output_tokens
-        usage.estimated_cost_usd = round(
-            usage.estimated_cost_usd + result.estimated_cost_usd, 8
-        )
+        usage.estimated_cost_usd = round(usage.estimated_cost_usd + result.estimated_cost_usd, 8)

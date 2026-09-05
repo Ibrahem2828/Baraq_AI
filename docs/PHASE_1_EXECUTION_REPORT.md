@@ -1,5 +1,7 @@
 # تقرير تنفيذ Phase 1 — Django Gateway Contract
 
+> **DEPRECATED — 2026-08-19.** This report describes the pre-HMAC-V2/pre-outbox implementation and is retained only as historical context. Current evidence is in [PHASE_1_PRODUCTION_CORE_REPORT.md](PHASE_1_PRODUCTION_CORE_REPORT.md); the active integration contract is [DJANGO_AI_CONTRACT.md](DJANGO_AI_CONTRACT.md).
+
 **التاريخ:** 2026-07-26
 **نطاق التنفيذ:** Phase 1 فقط، امتثالاً لطلب الملف المرفق.
 **الحالة النهائية:** **BLOCKED — لا يجوز وسمها كـ production-ready أو رفعها بعد.**

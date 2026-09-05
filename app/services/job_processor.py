@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import Any, cast
 
 from redis.asyncio import Redis
 from sqlalchemy import select
@@ -13,7 +14,7 @@ from app.core.errors import AppError
 from app.core.logging import get_logger
 from app.core.telemetry import AI_LATENCY, AI_REQUESTS
 from app.db.session import AsyncSessionLocal
-from app.models.ai_job import AIJob, AIOutput
+from app.models.ai_job import AIJob, AIOutput, JobDispatchOutboxEvent
 from app.models.enums import JobStatus
 from app.pipelines.base import PipelineContext
 from app.pipelines.registry import get_pipeline
@@ -21,53 +22,78 @@ from app.providers.router import ProviderRouter
 from app.rag.embeddings import EmbeddingService
 from app.services.backend_client import BackendClient
 from app.services.generation import StructuredGenerationService
+from app.services.job_state_machine import TERMINAL_JOB_STATES, JobStateMachine
 from app.services.source_ingestion import SourceIngestionService
+from app.services.webhook_delivery import RESULT_WEBHOOK_EVENT
 
 logger = get_logger(__name__)
 
 
-async def _update_progress(
-    session: AsyncSession,
-    job: AIJob,
-    *,
-    status: JobStatus,
-    percent: int,
-    message: str,
+async def _locked_job(session: AsyncSession, job_id: str) -> AIJob | None:
+    return cast(
+        AIJob | None,
+        await session.scalar(
+            select(AIJob)
+            .where(AIJob.id == uuid.UUID(job_id))
+            .options(selectinload(AIJob.output), selectinload(AIJob.attempts))
+            .with_for_update()
+        ),
+    )
+
+
+async def _transition(
+    session: AsyncSession, job: AIJob, *, status: JobStatus, message: str
 ) -> None:
-    job.status = status
-    job.progress_percent = percent
-    job.progress_message = message
+    JobStateMachine.transition(job, target=status, message=message)
     if job.started_at is None:
         job.started_at = datetime.now(UTC)
     await session.commit()
 
 
+async def _cancellation_requested(session: AsyncSession, job_id: str) -> bool:
+    current_status = await session.scalar(select(AIJob.status).where(AIJob.id == uuid.UUID(job_id)))
+    return current_status == JobStatus.CANCELED
+
+
+def _extract_texts(value: Any, *, out: list[str] | None = None) -> list[str]:
+    """Collect leaf string values out of a pipeline result payload so they
+    can be screened by moderation, without needing every pipeline to know
+    about moderation itself."""
+    out = [] if out is None else out
+    if isinstance(value, str):
+        if value.strip():
+            out.append(value)
+    elif isinstance(value, dict):
+        for item in value.values():
+            _extract_texts(item, out=out)
+    elif isinstance(value, list):
+        for item in value:
+            _extract_texts(item, out=out)
+    return out
+
+
 async def process_job(job_id: str) -> None:
+    """Process one job safely under at-least-once Celery delivery semantics."""
     settings = get_settings()
     started = datetime.now(UTC)
     backend = BackendClient()
     redis = Redis.from_url(settings.redis_url, decode_responses=True)
+    request_id: str | None = None
     try:
         async with AsyncSessionLocal() as session:
-            job = await session.scalar(
-                select(AIJob)
-                .where(AIJob.id == uuid.UUID(job_id))
-                .options(selectinload(AIJob.output), selectinload(AIJob.attempts))
-            )
-            if not job:
+            job = await _locked_job(session, job_id)
+            if job is None:
                 logger.error("ai_job_not_found", job_id=job_id)
                 return
-            if job.status == JobStatus.CANCELED:
+            request_id = job.request_id
+            logger.info("ai_job_processing", job_id=job_id, request_id=request_id)
+            if job.status != JobStatus.QUEUED:
+                # Only one worker may atomically claim queued work.
                 return
-            if job.output is not None or job.status == JobStatus.COMPLETED:
-                return
-            await _update_progress(
-                session,
-                job,
-                status=JobStatus.PROCESSING,
-                percent=5,
-                message="بدأت معالجة الطلب",
+            await _transition(
+                session, job, status=JobStatus.PREPARING, message="Preparing job for processing"
             )
+
             router = ProviderRouter(redis)
             generation = StructuredGenerationService(session=session, router=router)
             embeddings = EmbeddingService(router)
@@ -77,12 +103,12 @@ async def process_job(job_id: str) -> None:
                 embeddings=embeddings,
             )
             pipeline = get_pipeline(job.task_type)
-            await _update_progress(
+            job.pipeline_version = pipeline.version
+            await _transition(
                 session,
                 job,
                 status=JobStatus.RETRIEVING,
-                percent=20,
-                message="يتم تجهيز البيانات والمصادر",
+                message="Retrieving authoritative data and sources",
             )
             result = await pipeline.execute(
                 PipelineContext(
@@ -93,21 +119,29 @@ async def process_job(job_id: str) -> None:
                     ingestion=ingestion,
                 )
             )
-            if job.status == JobStatus.CANCELED:
+            if await _cancellation_requested(session, job_id):
                 return
-            await _update_progress(
-                session,
-                job,
-                status=JobStatus.VALIDATING,
-                percent=80,
-                message="يتم التحقق من جودة النتيجة",
+            # The pipeline owns retrieval/generation.  This persisted stage is
+            # where its result is independently validated.
+            await _transition(
+                session, job, status=JobStatus.VALIDATING, message="Validating generated result"
             )
             provider = result.provider_result
+            locked_job = await _locked_job(session, job_id)
+            if locked_job is None or locked_job.status == JobStatus.CANCELED:
+                return
+            if locked_job.output is not None or locked_job.status == JobStatus.COMPLETED:
+                return
+            moderation_flags = await generation.moderate(
+                routing_key=f"{locked_job.id}:moderation",
+                texts=_extract_texts(result.result_json),
+            )
+            security_flags = [*result.security_flags, *moderation_flags]
             output = AIOutput(
-                job_id=job.id,
+                job_id=locked_job.id,
                 result_json=result.result_json,
                 citations=[item.model_dump(mode="json") for item in result.citations],
-                validation_status="valid",
+                validation_status="flagged" if moderation_flags else "valid",
                 quality_score=result.quality_score,
                 groundedness_score=result.groundedness_score,
                 provider_account=provider.account,
@@ -118,27 +152,43 @@ async def process_job(job_id: str) -> None:
                 total_tokens=provider.usage.total_tokens,
                 estimated_cost_usd=provider.estimated_cost_usd,
                 provider_latency_ms=provider.latency_ms,
+                request_id=locked_job.request_id,
+                warnings=result.warnings,
+                security_flags=security_flags,
+                validation_report={
+                    "status": "flagged" if moderation_flags else "valid",
+                    "pipeline": locked_job.task_type.value,
+                    "pipeline_version": locked_job.pipeline_version,
+                    "knowledge_policy": pipeline.knowledge_policy.value,
+                    "prompt_checksum": locked_job.prompt_checksum,
+                    "source_versions": locked_job.source_versions,
+                },
             )
             session.add(output)
-            await session.flush()
-            # Django materializes results after it receives a Phase 4 outbox webhook.
-            # No direct callback is emitted here because callbacks must be persisted first.
-            job.status = JobStatus.COMPLETED
-            job.progress_percent = 100
-            job.progress_message = "اكتملت المعالجة بنجاح"
-            job.completed_at = datetime.now(UTC)
+            session.add(
+                JobDispatchOutboxEvent(
+                    job_id=locked_job.id,
+                    event_type=RESULT_WEBHOOK_EVENT,
+                    request_id=locked_job.request_id,
+                )
+            )
+            JobStateMachine.transition(
+                locked_job, target=JobStatus.COMPLETED, message="Job completed"
+            )
+            locked_job.completed_at = datetime.now(UTC)
             await session.commit()
             AI_REQUESTS.labels(job.task_type.value, "completed").inc()
             AI_LATENCY.labels(job.task_type.value).observe(
-                (job.completed_at - started).total_seconds()
+                (datetime.now(UTC) - started).total_seconds()
             )
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("ai_job_failed", job_id=job_id, error=str(exc))
+    except Exception as exc:
+        logger.exception("ai_job_failed", job_id=job_id, request_id=request_id, error=str(exc))
         async with AsyncSessionLocal() as session:
-            job = await session.scalar(select(AIJob).where(AIJob.id == uuid.UUID(job_id)))
-            if job and job.status != JobStatus.CANCELED:
-                job.status = JobStatus.FAILED
-                job.progress_message = "فشلت معالجة الطلب"
+            job = await _locked_job(session, job_id)
+            if job is not None and job.status not in TERMINAL_JOB_STATES:
+                JobStateMachine.transition(
+                    job, target=JobStatus.FAILED, message="Job processing failed"
+                )
                 job.error_code = exc.code if isinstance(exc, AppError) else exc.__class__.__name__
                 job.error_message = str(exc)[:4000]
                 job.completed_at = datetime.now(UTC)

@@ -10,7 +10,7 @@ migrate:
 	alembic upgrade head
 
 worker:
-	celery -A app.workers.celery_app:celery_app worker --loglevel=INFO --queues=ai_default,ai_audio,ai_embeddings
+	celery -A app.workers.celery_app:celery_app worker --loglevel=INFO --queues=ai_interactive,ai_audio,ai_ingestion,ai_background
 
 beat:
 	celery -A app.workers.celery_app:celery_app beat --loglevel=INFO
@@ -20,7 +20,7 @@ test:
 
 lint:
 	ruff check .
-	mypy app
+	mypy .
 
 format:
 	ruff format .

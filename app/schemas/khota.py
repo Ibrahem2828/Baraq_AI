@@ -35,7 +35,7 @@ class KhotaRequest(StrictModel):
     language: str = Field(default="ar", pattern="^(ar|en)$")
 
     @model_validator(mode="after")
-    def validate_dates(self) -> "KhotaRequest":
+    def validate_dates(self) -> KhotaRequest:
         if self.end_date < self.start_date:
             raise ValueError("end_date must be on or after start_date")
         if (self.end_date - self.start_date).days > 180:
@@ -60,11 +60,22 @@ class PlanDay(StrictModel):
     tasks: list[PlannedTask] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
-    def validate_total(self) -> "PlanDay":
+    def validate_total(self) -> PlanDay:
         calculated = sum(task.estimated_minutes for task in self.tasks)
         if self.total_minutes != calculated:
             raise ValueError("total_minutes must equal the sum of task durations")
         return self
+
+
+class KhotaNarrative(StrictModel):
+    """What the LLM is allowed to produce for Khota: an explanation of a
+    deterministic plan it did not create. Dates, minutes and day counts never
+    come from this model (spec section 17)."""
+
+    title: str = Field(min_length=3, max_length=300)
+    strategy_summary: str = Field(min_length=20, max_length=2500)
+    assumptions: list[str] = Field(default_factory=list, max_length=20)
+    adaptation_rules: list[str] = Field(default_factory=list, max_length=20)
 
 
 class KhotaResult(StrictModel):

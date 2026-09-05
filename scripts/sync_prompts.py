@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
+from pydantic import BaseModel
 from sqlalchemy import select, update
 
 from app.db.session import AsyncSessionLocal
@@ -10,13 +11,17 @@ from app.models.prompt import PromptVersion
 from app.prompts.registry import get_prompt_registry
 from app.schemas.fahes import FahesResult
 from app.schemas.kholasa import KholasaResult
-from app.schemas.khota import KhotaResult
+from app.schemas.khota import KhotaNarrative
 from app.schemas.rasheed import RasheedResult
 from app.schemas.sada import SadaResult
 
-SCHEMAS = {
+# The schema each prompt's LLM call is actually validated against. Khota maps
+# to the narrative-only schema, not the full KhotaResult: the day/task
+# schedule is produced by the deterministic scheduler
+# (app/services/khota_scheduler.py), never by the model (spec section 17).
+SCHEMAS: dict[str, type[BaseModel]] = {
     "fahes_generate_quiz": FahesResult,
-    "khota_generate_plan": KhotaResult,
+    "khota_generate_plan": KhotaNarrative,
     "rasheed_recommendations": RasheedResult,
     "kholasa_generate_summary": KholasaResult,
     "sada_transcribe_audio": SadaResult,
@@ -39,9 +44,7 @@ async def run() -> None:
                     f"Prompt {spec.name} {spec.version} changed without a version bump"
                 )
             await session.execute(
-                update(PromptVersion)
-                .where(PromptVersion.name == spec.name)
-                .values(is_active=False)
+                update(PromptVersion).where(PromptVersion.name == spec.name).values(is_active=False)
             )
             if existing is None:
                 existing = PromptVersion(

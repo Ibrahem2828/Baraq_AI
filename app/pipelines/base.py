@@ -11,6 +11,7 @@ from app.providers.base import ProviderResult
 from app.schemas.common import Citation
 from app.services.backend_client import BackendClient
 from app.services.generation import StructuredGenerationService
+from app.services.knowledge_policy import KnowledgePolicy
 from app.services.source_ingestion import SourceIngestionService
 
 
@@ -22,6 +23,7 @@ class PipelineResult:
     quality_score: float | None = None
     groundedness_score: float | None = None
     warnings: list[str] = field(default_factory=list)
+    security_flags: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -34,5 +36,8 @@ class PipelineContext:
 
 
 class AIPipeline(ABC):
+    knowledge_policy: KnowledgePolicy
+    version = "1"
+
     @abstractmethod
     async def execute(self, context: PipelineContext) -> PipelineResult: ...

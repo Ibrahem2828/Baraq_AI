@@ -1,20 +1,103 @@
-# Replace values when OpenAI pricing changes. USD per 1 million tokens unless noted.
-# Keeping pricing outside code allows cost reports to remain versioned and auditable.
-version: "2026-07-placeholder"
+# Pricing is a runtime financial safety control (spec section 22), not a
+# cosmetic report. USD per 1 million tokens unless noted. `status` marks
+# whether a figure has been verified against the provider's live, current
+# price list -- `pending_verification` must never be silently treated as a
+# confirmed non-zero price; scripts/validate_ai_release.py fails the release
+# if any *active* routing candidate still has a pending or missing entry.
+#
+# The figures below were fetched from the providers' official pricing pages
+# on 2026-09-03 (OpenAI: developers.openai.com/api/docs/pricing, Gemini:
+# ai.google.dev/gemini-api/docs/pricing). Prices change over time -- re-verify
+# against the live pages before every production budget review, and whenever
+# a model name in Settings/.env changes.
+pricing_version: "2026-09-03-verified-live"
 models:
+  gemini-2.5-pro:
+    status: verified_live
+    effective_from: "2026-09-03"
+    # <=200k token prompts. Gemini bills >200k prompts at input 2.50 /
+    # cached 0.25 / output 15.00 per 1M -- add a second entry if long-context
+    # Gemini calls are ever routed in practice.
+    input_per_million: 1.25
+    cached_input_per_million: 0.125
+    output_per_million: 10.00
+    currency: USD
+  gemini-2.5-flash:
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 0.30
+    cached_input_per_million: 0.03
+    output_per_million: 2.50
+    currency: USD
+  gemini-2.5-flash-lite:
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 0.10
+    cached_input_per_million: 0.01
+    output_per_million: 0.40
+    currency: USD
+  gemini-embedding-001:
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 0.15
+    currency: USD
   gpt-5.1:
-    input_per_million: 0.0
-    cached_input_per_million: 0.0
-    output_per_million: 0.0
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 1.25
+    cached_input_per_million: 0.125
+    output_per_million: 10.00
+    currency: USD
   gpt-5-mini:
-    input_per_million: 0.0
-    cached_input_per_million: 0.0
-    output_per_million: 0.0
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 0.25
+    cached_input_per_million: 0.025
+    output_per_million: 2.00
+    currency: USD
   gpt-5-nano:
-    input_per_million: 0.0
-    cached_input_per_million: 0.0
-    output_per_million: 0.0
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 0.05
+    cached_input_per_million: 0.005
+    output_per_million: 0.40
+    currency: USD
   text-embedding-3-small:
-    input_per_million: 0.0
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 0.02
+    currency: USD
+  # Default production Sada transcription model (cost-optimized -- see
+  # OPENAI_TRANSCRIPTION_MODEL in .env.example). Half the price of
+  # gpt-4o-transcribe with comparable quality for clear classroom audio.
+  gpt-4o-mini-transcribe:
+    status: verified_live
+    effective_from: "2026-09-03"
+    audio_per_minute: 0.003
+    currency: USD
+  # Used only when a job explicitly requests diarization (request.diarize
+  # =true) -- see app/pipelines/sada.py. Kept for cost auditing even though
+  # it is not the default model.
   gpt-4o-transcribe:
-    audio_per_minute: 0.0
+    status: verified_live
+    effective_from: "2026-09-03"
+    audio_per_minute: 0.006
+    currency: USD
+  gpt-4o-transcribe-diarize:
+    status: verified_live
+    effective_from: "2026-09-03"
+    audio_per_minute: 0.006
+    currency: USD
+  whisper-1:
+    status: verified_live
+    effective_from: "2026-09-03"
+    audio_per_minute: 0.006
+    currency: USD
+  # The moderation endpoint is free of charge -- kept at 0.0 deliberately,
+  # not "pending_verification"; this is a confirmed price, not a placeholder.
+  omni-moderation-latest:
+    status: verified_live
+    effective_from: "2026-09-03"
+    input_per_million: 0.0
+    output_per_million: 0.0
+    currency: USD

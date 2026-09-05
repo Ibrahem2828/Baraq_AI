@@ -3,6 +3,7 @@
 Revision ID: 0001_initial
 Revises:
 """
+
 from __future__ import annotations
 
 from alembic import op

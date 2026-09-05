@@ -1,0 +1,23 @@
+{
+  "kind": "success",
+  "payload": {
+    "title": "اختبار Replay بمخالفة مخطط متعمدة",
+    "description": "ثابت Replay متعمد لفشل التحقق من المخطط.",
+    "questions": [
+      {
+        "question_type": "mcq",
+        "question": "سؤال يحتوي على خيارات مكررة لاختبار رفض المدقق؟",
+        "choices": ["نفس الخيار", "نفس الخيار", "خيار ثالث"],
+        "correct_answer_index": 0,
+        "explanation": "هذا الثابت مصمم عمداً لمخالفة قاعدة تفرد الخيارات.",
+        "difficulty": "easy",
+        "topic": "موضوع Replay",
+        "source_references": [1]
+      }
+    ],
+    "covered_topics": [],
+    "warnings": [],
+    "citations": []
+  },
+  "usage": {"input_tokens": 400, "output_tokens": 200, "total_tokens": 600}
+}

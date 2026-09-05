@@ -15,6 +15,10 @@ class CostCalculator:
         self.path = path
         self.data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
+    @property
+    def version(self) -> str:
+        return str(self.data.get("pricing_version", "unknown"))
+
     def token_cost(self, model: str, usage: ProviderUsage) -> float:
         prices = self.data.get("models", {}).get(model, {})
         uncached = max(0, usage.input_tokens - usage.cached_input_tokens)

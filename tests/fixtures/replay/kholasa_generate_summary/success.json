@@ -1,0 +1,18 @@
+{
+  "kind": "success",
+  "payload": {
+    "title": "ملخص Replay على مصدر تجريبي",
+    "executive_summary": "ملخص تنفيذي محفوظ عبر Replay يغطي أهم نقاط المصدر التجريبي المستخدم في اختبارات التكامل.",
+    "detailed_summary": "ملخص تفصيلي محفوظ عبر Replay يشرح محتوى المصدر التجريبي بالترتيب دون إضافة أي حقيقة خارج النص الأصلي المستخدم في هذا الثابت.",
+    "key_points": ["النقطة الأولى من المصدر التجريبي", "النقطة الثانية من المصدر التجريبي"],
+    "important_terms": ["مصطلح Replay"],
+    "covered_topics": ["موضوع Replay"],
+    "review_questions": ["ما أهم نقطة وردت في المصدر التجريبي؟"],
+    "flashcards": [
+      {"front": "سؤال بطاقة Replay", "back": "إجابة بطاقة Replay", "source_references": [1]}
+    ],
+    "limitations": [],
+    "citations": []
+  },
+  "usage": {"input_tokens": 1400, "output_tokens": 680, "total_tokens": 2080}
+}

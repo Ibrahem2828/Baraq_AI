@@ -30,7 +30,9 @@ class ProviderCircuitBreaker:
 
     async def record_failure(self, account: ProviderAccount) -> None:
         failures = await self.redis.incr(self._failure_key(account))
-        await self.redis.expire(self._failure_key(account), self.settings.provider_cooldown_seconds * 2)
+        await self.redis.expire(
+            self._failure_key(account), self.settings.provider_cooldown_seconds * 2
+        )
         if failures >= self.settings.provider_circuit_failure_threshold:
             open_until = time.time() + self.settings.provider_cooldown_seconds
             await self.redis.set(

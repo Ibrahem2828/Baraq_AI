@@ -23,13 +23,19 @@ celery_app.conf.update(
     task_track_started=True,
     broker_connection_retry_on_startup=True,
     task_routes={
-        "app.workers.tasks.process_ai_job": {"queue": "ai_default"},
-        "app.workers.tasks.cleanup_expired_data": {"queue": "ai_default"},
+        "app.workers.tasks.process_ai_job": {"queue": "ai_interactive"},
+        "app.workers.tasks.deliver_result_webhook": {"queue": "ai_background"},
+        "app.workers.tasks.dispatch_job_outbox": {"queue": "ai_background"},
+        "app.workers.tasks.cleanup_expired_data": {"queue": "ai_background"},
     },
     beat_schedule={
+        "dispatch-durable-ai-jobs": {
+            "task": "app.workers.tasks.dispatch_job_outbox",
+            "schedule": 10.0,
+        },
         "cleanup-expired-ai-data-daily": {
             "task": "app.workers.tasks.cleanup_expired_data",
             "schedule": 86400.0,
-        }
+        },
     },
 )

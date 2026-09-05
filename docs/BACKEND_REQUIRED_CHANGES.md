@@ -1,5 +1,7 @@
 # التغييرات المطلوبة في Django Backend
 
+> **DEPRECATED — 2026-08-19.** This pre-V2 rollout note is superseded by [DJANGO_AI_CONTRACT.md](DJANGO_AI_CONTRACT.md) and [INTERNAL_AUTH_V2.md](INTERNAL_AUTH_V2.md). Do not implement its legacy signing example.
+
 **النطاق:** متطلبات تكامل Phase 1 فقط.
 **ممنوع في هذه المرحلة:** تعديل تطبيق Django من هذا المستودع، أو نقل الرصيد/materialization إلى AI، أو تفعيل webhook قبل outbox Phase 4.
 

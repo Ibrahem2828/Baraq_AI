@@ -1,0 +1,2 @@
+{"id": "fahes-001", "task_type": "fahes_generate_quiz", "sources": [{"filename": "geography.txt", "content": "المصدر يذكر الرياض كمثال توضيحي رقم واحد على عاصمة عربية."}], "input": {"question_count": 3, "question_types": ["mcq"], "language": "ar"}}
+{"id": "fahes-002", "task_type": "fahes_generate_quiz", "sources": [{"filename": "geography_2.txt", "content": "يعرض المصدر الرياض كمثال توضيحي رقم واحد ضمن قائمة العواصم العربية."}], "input": {"question_count": 3, "question_types": ["mcq", "true_false"], "language": "ar"}}

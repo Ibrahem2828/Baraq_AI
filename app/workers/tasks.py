@@ -7,22 +7,39 @@ from sqlalchemy import delete
 
 from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal
-from app.models.ai_job import AIJob
+from app.models.ai_job import AIJob, JobDispatchOutboxEvent
 from app.models.enums import JobStatus
 from app.services.job_processor import process_job
+from app.services.outbox_dispatcher import OutboxDispatcher
+from app.services.webhook_delivery import RESULT_WEBHOOK_EVENT, deliver_result_webhook
 from app.workers.celery_app import celery_app
+from app.workers.celery_compat import celery_task
 
 
-@celery_app.task(
-    bind=True,
-    autoretry_for=(ConnectionError, TimeoutError),
-    retry_backoff=True,
-    retry_jitter=True,
-    max_retries=5,
-    name="app.workers.tasks.process_ai_job",
-)
-def process_ai_job(self, job_id: str) -> None:  # noqa: ANN001
+@celery_task(name="app.workers.tasks.process_ai_job")
+def process_ai_job(job_id: str) -> None:
     asyncio.run(process_job(job_id))
+
+
+@celery_task(name="app.workers.tasks.deliver_result_webhook")
+def deliver_result_webhook_task(event_id: str) -> None:
+    asyncio.run(deliver_result_webhook(event_id))
+
+
+def _enqueue_outbox_event(event: JobDispatchOutboxEvent) -> object:
+    if event.event_type == "process_ai_job":
+        return celery_app.send_task("app.workers.tasks.process_ai_job", args=[str(event.job_id)])
+    if event.event_type == RESULT_WEBHOOK_EVENT:
+        return celery_app.send_task(
+            "app.workers.tasks.deliver_result_webhook", args=[str(event.id)]
+        )
+    raise ValueError(f"Unsupported outbox event type: {event.event_type}")
+
+
+@celery_task(name="app.workers.tasks.dispatch_job_outbox")
+def dispatch_job_outbox() -> int:
+    """The durable retry loop for post-commit job delivery."""
+    return asyncio.run(OutboxDispatcher().dispatch_pending(_enqueue_outbox_event))
 
 
 async def _cleanup() -> int:
@@ -36,9 +53,9 @@ async def _cleanup() -> int:
             )
         )
         await session.commit()
-        return int(result.rowcount or 0)
+        return int(getattr(result, "rowcount", 0) or 0)
 
 
-@celery_app.task(name="app.workers.tasks.cleanup_expired_data")
+@celery_task(name="app.workers.tasks.cleanup_expired_data")
 def cleanup_expired_data() -> int:
     return asyncio.run(_cleanup())

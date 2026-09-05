@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
-
-T = TypeVar("T")
 
 
 class StrictModel(BaseModel):
@@ -20,7 +18,7 @@ class APIError(StrictModel):
     request_id: str | None = None
 
 
-class APIEnvelope(StrictModel, Generic[T]):
+class APIEnvelope[T](StrictModel):
     success: bool = True
     data: T | None = None
     error: APIError | None = None
@@ -28,12 +26,17 @@ class APIEnvelope(StrictModel, Generic[T]):
 
 
 class Citation(StrictModel):
+    evidence_id: uuid.UUID | None = None
     source_id: str
+    content_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     chunk_id: uuid.UUID | None = None
     page_number: int | None = Field(default=None, ge=1)
     section_title: str | None = None
     excerpt: str = Field(min_length=1, max_length=1200)
     relevance_score: float | None = Field(default=None, ge=0, le=1)
+    semantic_score: float | None = Field(default=None, ge=0, le=1)
+    lexical_score: float | None = Field(default=None, ge=0, le=1)
+    rerank_score: float | None = Field(default=None, ge=0, le=1)
 
 
 class HealthStatus(StrictModel):
@@ -42,4 +45,5 @@ class HealthStatus(StrictModel):
     status: str
     database: str | None = None
     redis: str | None = None
+    migrations: str | None = None
     timestamp: datetime
