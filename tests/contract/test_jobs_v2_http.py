@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Generator
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,7 @@ from fastapi.testclient import TestClient
 import app.api.dependencies as dependencies
 from app.api.dependencies import require_django_service
 from app.core.config import get_settings
+from app.core.errors import NotFoundError
 from app.core.security import AuthenticatedDjangoService, make_service_signature
 from app.db.session import get_db_session
 from app.main import app
@@ -131,3 +133,144 @@ def test_http_route_rejects_a_tampered_signed_body_before_database_access(
         )
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_content_hash"
+
+
+def test_get_job_requires_user_id_query_param(client: TestClient) -> None:
+    # backend_request_id is unique only per (user_id, backend_request_id) --
+    # omitting user_id would let a lookup match another tenant's job.
+    response = client.get("/api/ai/v1/jobs/00000000-0000-0000-0000-000000000010")
+    assert response.status_code == 422
+
+
+def _fake_job(*, client_job_id: str, status: JobStatus) -> SimpleNamespace:
+    now = datetime.now(UTC)
+    return SimpleNamespace(
+        id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+        backend_request_id=client_job_id,
+        request_id=str(uuid.uuid4()),
+        task_type=TaskType.FAHES_GENERATE_QUIZ,
+        character=Character.FAHES,
+        status=status,
+        progress_percent=0,
+        progress_message="in progress",
+        created_at=now,
+        updated_at=now,
+        started_at=None,
+        completed_at=None,
+        error_code=None,
+        error_message=None,
+        output=None,
+    )
+
+
+def test_get_job_scopes_the_lookup_by_user_id(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, str] = {}
+
+    async def fake_get_job_by_client_id(
+        self: JobService, *, client_job_id: str, user_id: str
+    ) -> SimpleNamespace:
+        captured["client_job_id"] = client_job_id
+        captured["user_id"] = user_id
+        return _fake_job(client_job_id=client_job_id, status=JobStatus.QUEUED)
+
+    monkeypatch.setattr(JobService, "get_job_by_client_id", fake_get_job_by_client_id)
+    response = client.get(
+        "/api/ai/v1/jobs/00000000-0000-0000-0000-000000000010?user_id=user-1"
+    )
+    assert response.status_code == 200, response.text
+    assert captured == {
+        "client_job_id": "00000000-0000-0000-0000-000000000010",
+        "user_id": "user-1",
+    }
+
+
+def test_get_job_returns_404_when_job_belongs_to_a_different_tenant(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_get_job_by_client_id(
+        self: JobService, *, client_job_id: str, user_id: str
+    ) -> SimpleNamespace:
+        raise NotFoundError("AI job not found")
+
+    monkeypatch.setattr(JobService, "get_job_by_client_id", fake_get_job_by_client_id)
+    response = client.get(
+        "/api/ai/v1/jobs/00000000-0000-0000-0000-000000000010?user_id=someone-elses-id"
+    )
+    assert response.status_code == 404
+
+
+def test_get_job_rejects_a_user_id_query_param_tampered_after_signing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The HMAC signature must cover query parameters, not just the body --
+    otherwise `user_id` (added to close the cross-tenant IDOR) would be a bare,
+    unauthenticated claim any intermediary could rewrite. This exercises the
+    real verify_and_consume_service_signature path end-to-end over HTTP, unlike
+    the tenant-scoping tests above which override require_django_service."""
+
+    class FakeRedis:
+        async def set(self, *args: object, **kwargs: object) -> bool:
+            return True
+
+    async def fake_session() -> object:
+        yield object()
+
+    async def fake_get_job_by_client_id(
+        self: JobService, *, client_job_id: str, user_id: str
+    ) -> SimpleNamespace:
+        return _fake_job(client_job_id=client_job_id, status=JobStatus.QUEUED)
+
+    get_settings.cache_clear()
+    monkeypatch.setattr(dependencies, "get_redis", lambda: FakeRedis())
+    monkeypatch.setattr(JobService, "get_job_by_client_id", fake_get_job_by_client_id)
+    app.dependency_overrides[get_db_session] = fake_session
+
+    job_id = "00000000-0000-0000-0000-000000000010"
+    signed_target = f"/api/ai/v1/jobs/{job_id}?user_id=user-a"
+    headers = make_service_signature(
+        method="GET",
+        target=signed_target,
+        body=b"",
+        service="baraq-django",
+        key_id=get_settings().baraq_hmac_current_key_id,
+        nonce="user-id-tamper-test-0001",
+    )
+
+    try:
+        with TestClient(app, base_url="http://localhost") as test_client:
+            accepted = test_client.get(signed_target, headers=headers)
+            # Same headers/signature, but user_id swapped on the wire without
+            # re-signing -- must be rejected, not silently scoped to "user-b".
+            tampered_target = f"/api/ai/v1/jobs/{job_id}?user_id=user-b"
+            rejected = test_client.get(tampered_target, headers=headers)
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+
+    assert accepted.status_code == 200, accepted.text
+    assert rejected.status_code == 401, rejected.text
+    assert rejected.json()["error"]["code"] == "invalid_signature"
+
+
+def test_cancel_job_scopes_the_lookup_by_user_id(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, str] = {}
+
+    async def fake_cancel_job_by_client_id(
+        self: JobService, *, client_job_id: str, user_id: str
+    ) -> SimpleNamespace:
+        captured["client_job_id"] = client_job_id
+        captured["user_id"] = user_id
+        return _fake_job(client_job_id=client_job_id, status=JobStatus.CANCELED)
+
+    monkeypatch.setattr(JobService, "cancel_job_by_client_id", fake_cancel_job_by_client_id)
+    response = client.post(
+        "/api/ai/v1/jobs/00000000-0000-0000-0000-000000000010/cancel?user_id=user-1"
+    )
+    assert response.status_code == 200, response.text
+    assert captured == {
+        "client_job_id": "00000000-0000-0000-0000-000000000010",
+        "user_id": "user-1",
+    }

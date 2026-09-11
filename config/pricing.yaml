@@ -70,10 +70,24 @@ models:
   # Default production Sada transcription model (cost-optimized -- see
   # OPENAI_TRANSCRIPTION_MODEL in .env.example). Half the price of
   # gpt-4o-transcribe with comparable quality for clear classroom audio.
+  #
+  # IMPORTANT -- pricing_strategy: unlike whisper-1, the gpt-4o-transcribe
+  # family is billed by OpenAI per audio/text token, not per minute of audio
+  # (confirmed via developers.openai.com/api/docs/pricing and the API's own
+  # response, which includes a `usage.{input_tokens,output_tokens}` object
+  # for these models). CostCalculator.transcription_cost() uses input/output
+  # token pricing below as the primary source when the provider reports
+  # usage. `audio_per_minute` here is OpenAI's own published "estimated cost"
+  # convenience figure for this model, kept ONLY as a documented fallback for
+  # the rare case a response omits usage -- never treat it as the metered
+  # price for these three models.
   gpt-4o-mini-transcribe:
     status: verified_live
     effective_from: "2026-09-03"
-    audio_per_minute: 0.003
+    pricing_strategy: tokens
+    input_per_million: 1.25
+    output_per_million: 5.00
+    audio_per_minute: 0.003 # fallback estimate only -- see note above
     currency: USD
   # Used only when a job explicitly requests diarization (request.diarize
   # =true) -- see app/pipelines/sada.py. Kept for cost auditing even though
@@ -81,16 +95,26 @@ models:
   gpt-4o-transcribe:
     status: verified_live
     effective_from: "2026-09-03"
-    audio_per_minute: 0.006
+    pricing_strategy: tokens
+    input_per_million: 2.50
+    output_per_million: 10.00
+    audio_per_minute: 0.006 # fallback estimate only -- see note above
     currency: USD
   gpt-4o-transcribe-diarize:
     status: verified_live
     effective_from: "2026-09-03"
-    audio_per_minute: 0.006
+    pricing_strategy: tokens
+    input_per_million: 2.50
+    output_per_million: 10.00
+    audio_per_minute: 0.006 # fallback estimate only -- see note above
     currency: USD
+  # whisper-1 is the one transcription model OpenAI genuinely bills by audio
+  # duration -- it reports no token usage at all, so audio_per_minute is the
+  # real (not estimated) price.
   whisper-1:
     status: verified_live
     effective_from: "2026-09-03"
+    pricing_strategy: duration_minutes
     audio_per_minute: 0.006
     currency: USD
   # The moderation endpoint is free of charge -- kept at 0.0 deliberately,

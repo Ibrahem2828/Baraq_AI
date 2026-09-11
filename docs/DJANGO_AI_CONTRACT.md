@@ -61,7 +61,7 @@ The manifest must contain `source_id`, `owner_user_id`, `title`, `mime_type`, `s
 
 AI calls Django only through `BackendClient`. All calls use the same HMAC V2 protocol documented in [INTERNAL_AUTH_V2.md](INTERNAL_AUTH_V2.md), with `X-Baraq-Service: baraq-ai-service`. Django must accept that service, validate the key ID, timestamp, nonce, body hash, method, path, and canonical query string, and enforce the same replay cache rule.
 
-No direct Django database access, credit handling, or materialization call is permitted from AI in this phase. Django may poll `GET /api/ai/v1/jobs/{client_job_id}` using HMAC V2.
+No direct Django database access, credit handling, or materialization call is permitted from AI in this phase. Django may poll `GET /api/ai/v1/jobs/{client_job_id}?user_id={user_id}` and `POST /api/ai/v1/jobs/{client_job_id}/cancel?user_id={user_id}` using HMAC V2. `user_id` is required and must be the job owner: `backend_request_id` is unique only per `(user_id, backend_request_id)` (two tenants may legitimately reuse the same `client_job_id`), so both endpoints scope the lookup by `user_id` and return `404 job_not_found` for any other tenant's job, even one with a colliding id. `user_id` is part of the signed canonical query string, so Django cannot omit or spoof it without invalidating the HMAC signature.
 
 ## Stable error codes
 
@@ -73,3 +73,37 @@ Integration code must use `error.code`, not English error text. Relevant codes a
 2. Submit V2 jobs in staging and poll using V2-signed requests.
 3. Implement source manifest/download ownership checks with the exact query contract above.
 4. Run the cross-repository V2 vector and golden integration test before disabling the V1 adapter.
+
+## Rollout order for the required `user_id` on GET/cancel (2026-09-12)
+
+`GET /api/ai/v1/jobs/{client_job_id}` and `POST /api/ai/v1/jobs/{client_job_id}/cancel` now
+require `user_id` as a query parameter (previously the lookup was not tenant-scoped at all — a
+cross-tenant IDOR). This is a breaking contract change and **must be sequenced, not deployed
+atomically**, because HMAC V2 signs whatever query string is actually sent
+(`canonical_request_target` in `app/core/security.py` parses and sorts it into the signed
+canonical request) — there is no signing-scheme migration to coordinate, only the query string
+Django chooses to send.
+
+**Verified rollout order (do this, not a simultaneous deploy):**
+
+1. **Django ships `user_id` on both endpoints first**, signs it as part of the request (the
+   existing V2 signer already covers query parameters, so no signer change is needed — only the
+   query string Django builds). Verify in staging against the *current* (pre-enforcement)
+   Baraq_AI: confirmed by test that the current code silently ignores the extra query parameter
+   and proceeds unaffected (it isn't declared on the old endpoint signature, and FastAPI does not
+   reject undeclared query parameters) — so this step is safe to ship ahead of Baraq_AI with zero
+   behavior change on either side.
+2. **Deploy this Baraq_AI change** once step 1 is confirmed live in staging/production. Verified by
+   test that the reverse order breaks cleanly and loudly, not silently or insecurely: a legacy
+   Django request signed *without* `user_id` gets a `422 invalid_contract`
+   (`{"loc": ["query", "user_id"], "type": "missing"}`) from FastAPI's own parameter validation —
+   never a wrong-tenant result, a 5xx, or a signature bypass. So if the order is ever accidentally
+   reversed, the failure mode is safe (loud rejection), just not available — it is still not safe
+   to *rely on* that order, since it means an outage for every GET/cancel call until Django
+   catches up.
+3. Confirm `docs/openapi.json` (regenerated with `BARAQ_RUNTIME_MODE=service`) reflects `user_id`
+   as `required` on both operations before treating this as closed.
+
+**Do not** treat this as safe to deploy atomically/simultaneously "close enough" — the two
+verified failure modes above are asymmetric (harmless no-op vs. total outage of two endpoints),
+so there is a clear correct order, not just a preference.

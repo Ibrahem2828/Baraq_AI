@@ -30,7 +30,13 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.errors import ProviderError, ValidationFailure
 from app.models.enums import Provider, ProviderAccount
-from app.providers.base import LLMProvider, ProviderResult, ProviderUsage, TranscriptionResult
+from app.providers.base import (
+    EmbeddingResult,
+    LLMProvider,
+    ProviderResult,
+    ProviderUsage,
+    TranscriptionResult,
+)
 
 DEFAULT_SCENARIO = "success"
 
@@ -127,9 +133,15 @@ class ReplayProvider(LLMProvider):
             metadata={"simulated": True, "provider_mode": "replay", "scenario": scenario},
         )
 
-    async def embed(self, *, model: str, texts: list[str]) -> list[list[float]]:
-        del model
-        return [[0.0] * 8 for _ in texts]
+    async def embed(self, *, model: str, texts: list[str]) -> EmbeddingResult:
+        return EmbeddingResult(
+            vectors=[[0.0] * 8 for _ in texts],
+            account=self.account,
+            model=model,
+            usage=ProviderUsage(),
+            latency_ms=0,
+            estimated_cost_usd=0.0,
+        )
 
     async def transcribe(
         self,

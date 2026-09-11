@@ -10,21 +10,16 @@
 
 ## المسار الخارجي النهائي
 
-بعد ضبط الـReverse Proxy، تكون واجهات الخدمة تحت نفس نطاق الباك الحالي:
+> **تنبيه:** هذه الخدمة **لا** تُستدعى مباشرة من تطبيق الجوال أو الويب، ولا تدعم أي مسارات علنية لكل شخصية (لا `/fahes/quizzes` ولا ما شابه) ولا مصادقة Bearer. المسار الوحيد الفعلي هو بوابة Django الداخلية عبر HMAC V2 — راجع [docs/DJANGO_AI_CONTRACT.md](docs/DJANGO_AI_CONTRACT.md) للعقد الحالي والوحيد المعتمد.
+
+المسارات الفعلية المتاحة (كلها موقّعة بـ HMAC V2 من Django فقط، وليست علنية):
 
 ```text
-https://api.barraq.xn--mgbaab0cxheq.tech/api/ai/v1/
-```
-
-أمثلة:
-
-```text
-POST /api/ai/v1/fahes/quizzes
-POST /api/ai/v1/khota/plans
-POST /api/ai/v1/rasheed/recommendations
-POST /api/ai/v1/kholasa/summaries
-POST /api/ai/v1/sada/transcriptions
-GET  /api/ai/v1/jobs/{job_id}
+GET  /api/ai/v1/health/live
+GET  /api/ai/v1/health/ready
+POST /api/ai/v1/jobs                       # إنشاء مهمة (fahes/khota/rasheed/kholasa/sada عبر task_type)
+GET  /api/ai/v1/jobs/{job_id}?user_id=...  # حالة المهمة، مقيّدة بمالك المهمة
+POST /api/ai/v1/jobs/{job_id}/cancel?user_id=...
 POST /api/ai/v1/feedback
 ```
 
@@ -99,18 +94,17 @@ python scripts/export_dataset.py \
 ## تدفق الطلب
 
 ```text
-Mobile App
-  -> /api/ai/v1/<character>/<action>
-  -> JWT Verification
-  -> Credit Reservation in Django
-  -> AI Job + Idempotency
+Mobile / Web
+  -> Django (المصادقة والصلاحيات وحجز الرصيد؛ المصدر الوحيد للحقيقة)
+  -> POST /api/ai/v1/jobs  (HMAC V2 من Django فقط، وليس من العميل مباشرة)
+  -> AI Job + Idempotency (user_id + client_job_id)
   -> Celery Worker
-  -> Source Manifest + Signed Download URL
+  -> Source Manifest + Signed Download URL (عبر Django)
   -> Extraction + Chunking + Embeddings + pgvector Retrieval
-  -> Versioned Prompt + OpenAI Responses API
+  -> Versioned Prompt + Provider (Gemini أولاً ثم OpenAI عند الفشل)
   -> Strict JSON Schema + Domain Validation
-  -> Materialize Result in Django
-  -> Commit Credits
+  -> Webhook إلى Django بالنتيجة (منفصل تماماً عن إعادة تنفيذ المهمة)
+  -> Django يطبّق الرصيد والمواد النهائية
   -> User Feedback
   -> Anonymized Dataset Candidate
 ```

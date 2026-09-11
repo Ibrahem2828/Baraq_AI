@@ -31,6 +31,16 @@ class ProviderResult:
 
 
 @dataclass(slots=True)
+class EmbeddingResult:
+    vectors: list[list[float]]
+    account: ProviderAccount
+    model: str
+    usage: ProviderUsage = field(default_factory=ProviderUsage)
+    latency_ms: int = 0
+    estimated_cost_usd: float = 0.0
+
+
+@dataclass(slots=True)
 class TranscriptionResult:
     text: str
     segments: list[dict[str, Any]]
@@ -61,7 +71,7 @@ class LLMProvider(ABC):
     ) -> ProviderResult: ...
 
     @abstractmethod
-    async def embed(self, *, model: str, texts: list[str]) -> list[list[float]]: ...
+    async def embed(self, *, model: str, texts: list[str]) -> EmbeddingResult: ...
 
     @abstractmethod
     async def transcribe(

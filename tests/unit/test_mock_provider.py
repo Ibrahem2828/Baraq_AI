@@ -62,7 +62,7 @@ async def test_mock_provider_raises_for_an_unregistered_task_type() -> None:
 @pytest.mark.asyncio
 async def test_mock_provider_embed_and_moderate_never_touch_the_network() -> None:
     provider = MockProvider()
-    vectors = await provider.embed(model="mock", texts=["a", "b"])
-    assert len(vectors) == 2
+    result = await provider.embed(model="mock", texts=["a", "b"])
+    assert len(result.vectors) == 2
     moderation = await provider.moderate(model="mock", inputs=["x"])
     assert moderation[0]["flagged"] is False

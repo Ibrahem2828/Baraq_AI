@@ -1,5 +1,7 @@
 # عقد API الخارجي لخدمة الذكاء الاصطناعي
 
+> **DEPRECATED.** This document describes a public, per-character API (`/fahes/quizzes`, etc.) with client-facing `Authorization: Bearer` auth that **does not exist in the running service** and was never implemented in this form. The only mounted, current contract is the internal Django-gateway job API authenticated via HMAC V2 — see [DJANGO_AI_CONTRACT.md](DJANGO_AI_CONTRACT.md) and [INTERNAL_AUTH_V2.md](INTERNAL_AUTH_V2.md). Do not integrate against anything below this notice.
+
 ## العنوان الأساسي
 
 ```text

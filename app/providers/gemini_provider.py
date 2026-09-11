@@ -19,7 +19,13 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.errors import ProviderError, ValidationFailure, classify_provider_status
 from app.models.enums import Provider, ProviderAccount
-from app.providers.base import LLMProvider, ProviderResult, ProviderUsage, TranscriptionResult
+from app.providers.base import (
+    EmbeddingResult,
+    LLMProvider,
+    ProviderResult,
+    ProviderUsage,
+    TranscriptionResult,
+)
 from app.services.cost import get_cost_calculator
 
 
@@ -119,9 +125,10 @@ class GeminiProvider(LLMProvider):
             metadata={"finish_reason": str(getattr(response, "finish_reason", None))},
         )
 
-    async def embed(self, *, model: str, texts: list[str]) -> list[list[float]]:
+    async def embed(self, *, model: str, texts: list[str]) -> EmbeddingResult:
         if not texts:
-            return []
+            return EmbeddingResult(vectors=[], account=self.account, model=model)
+        started = time.perf_counter()
         try:
             # list[str] is not a subtype of the SDK's list[str | Image | ...]
             # union under mypy's invariant list typing, even though every
@@ -138,7 +145,38 @@ class GeminiProvider(LLMProvider):
                 retryable=retryable,
                 details={"http_status": status},
             ) from exc
-        return [list(item.values or []) for item in response.embeddings or []]
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        # The Gemini Developer API's raw HTTP response DOES include
+        # usageMetadata.promptTokenCount for embedContent (ai.google.dev/api/
+        # embeddings) -- but the installed google-genai SDK's mldev response
+        # converter (_EmbedContentResponse_from_mldev in google/genai/
+        # models.py) only copies `embeddings`/`metadata`/`sdk_http_response`
+        # out of the raw JSON and never maps usageMetadata onto
+        # EmbedContentResponse, whose declared fields don't include it either
+        # -- so it never reaches Python here, and sdk_http_response.body (the
+        # one place the raw JSON might have survived) is also left unset for
+        # this endpoint. Verified against the installed google-genai==1.75.0
+        # (the newest release this project's `google-genai>=1.2,<2.0` pin
+        # allows; 2.x exists but is an unreviewed major-version jump).
+        # `getattr` below costs nothing today and picks up exact usage for
+        # free the moment a future SDK release exposes it, without this
+        # provider having to change.
+        usage_meta = getattr(response, "usage_metadata", None)
+        exact_tokens = getattr(usage_meta, "prompt_token_count", None) if usage_meta else None
+        if exact_tokens is not None:
+            token_count = int(exact_tokens)
+        else:
+            token_count = sum(max(1, len(text) // 4) for text in texts)
+        usage = ProviderUsage(input_tokens=token_count, total_tokens=token_count)
+        cost = get_cost_calculator().embedding_cost(model, token_count)
+        return EmbeddingResult(
+            vectors=[list(item.values or []) for item in response.embeddings or []],
+            account=self.account,
+            model=model,
+            usage=usage,
+            latency_ms=latency_ms,
+            estimated_cost_usd=cost,
+        )
 
     async def transcribe(
         self,

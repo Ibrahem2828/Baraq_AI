@@ -1,5 +1,7 @@
 # التعديلات المطلوبة على باك برّاق للربط مع خدمة AI المستقلة
 
+> **DEPRECATED.** This document describes an asymmetric JWT/JWKS auth model (`GET /.well-known/jwks.json`, RS256/ES256) that was removed from the production request path in Phase 1. The current, only supported service-to-service auth is HMAC V2 — see [DJANGO_AI_CONTRACT.md](DJANGO_AI_CONTRACT.md) and [INTERNAL_AUTH_V2.md](INTERNAL_AUTH_V2.md). Do not implement the JWT/JWKS flow described below.
+
 ## 1. التوجيه الخارجي
 
 اضبط Reverse Proxy بحيث يكون:

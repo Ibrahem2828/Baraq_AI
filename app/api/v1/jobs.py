@@ -142,18 +142,20 @@ async def create_job(
 @router.get("/{job_id}", response_model=APIEnvelope[JobView])
 async def get_job(
     job_id: str,
+    user_id: str,
     session: DbSession,
     _: DjangoService,
 ) -> APIEnvelope[JobView]:
-    job = await JobService(session).get_job_by_client_id(client_job_id=job_id)
+    job = await JobService(session).get_job_by_client_id(client_job_id=job_id, user_id=user_id)
     return APIEnvelope(data=to_job_view(job))
 
 
 @router.post("/{job_id}/cancel", response_model=APIEnvelope[JobView])
 async def cancel_job(
     job_id: str,
+    user_id: str,
     session: DbSession,
     _: DjangoService,
 ) -> APIEnvelope[JobView]:
-    job = await JobService(session).cancel_job_by_client_id(client_job_id=job_id)
+    job = await JobService(session).cancel_job_by_client_id(client_job_id=job_id, user_id=user_id)
     return APIEnvelope(data=to_job_view(job))

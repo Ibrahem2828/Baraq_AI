@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import get_settings
 from app.providers.capabilities import Capability
 from app.providers.model_aliases import embedding_model_for
 from app.providers.router import ProviderRouter
+from app.services.provider_budget import ProviderBudgetService
 
 
 class EmbeddingService:
-    def __init__(self, router: ProviderRouter) -> None:
+    def __init__(self, router: ProviderRouter, *, session: AsyncSession) -> None:
         self.router = router
         self.settings = get_settings()
+        self.budget = ProviderBudgetService(session)
 
     async def embed_documents(self, texts: list[str], routing_key: str) -> list[list[float]]:
         candidates = await self.router.candidates_for_capability(Capability.EMBEDDINGS, routing_key)
@@ -17,16 +21,18 @@ class EmbeddingService:
         for candidate in candidates:
             if candidate.instance is None:
                 continue
+            if not await self.budget.has_budget(candidate.account_id):
+                continue
             model = embedding_model_for(self.settings, candidate.provider)
             try:
                 vectors: list[list[float]] = []
                 for start in range(0, len(texts), 100):
-                    vectors.extend(
-                        await candidate.instance.embed(
-                            model=model,
-                            texts=texts[start : start + 100],
-                        )
+                    result = await candidate.instance.embed(
+                        model=model,
+                        texts=texts[start : start + 100],
                     )
+                    vectors.extend(result.vectors)
+                    await self.budget.record(result)
                 await self.router.circuit.record_success(candidate.account_id)
                 return vectors
             except Exception as exc:

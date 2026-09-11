@@ -9,7 +9,13 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.errors import ProviderError, ValidationFailure
 from app.models.enums import Provider, ProviderAccount
-from app.providers.base import LLMProvider, ProviderResult, ProviderUsage, TranscriptionResult
+from app.providers.base import (
+    EmbeddingResult,
+    LLMProvider,
+    ProviderResult,
+    ProviderUsage,
+    TranscriptionResult,
+)
 from app.services.cost import get_cost_calculator
 from app.utils.json_schema import to_openai_strict_schema
 
@@ -131,9 +137,10 @@ class OpenAIProvider(LLMProvider):
             metadata={"status": getattr(response, "status", None)},
         )
 
-    async def embed(self, *, model: str, texts: list[str]) -> list[list[float]]:
+    async def embed(self, *, model: str, texts: list[str]) -> EmbeddingResult:
         if not texts:
-            return []
+            return EmbeddingResult(vectors=[], account=self.account, model=model)
+        started = time.perf_counter()
         try:
             response = await self.client.embeddings.create(model=model, input=texts)
         except Exception as exc:
@@ -144,7 +151,19 @@ class OpenAIProvider(LLMProvider):
                 retryable=status in {408, 409, 429, 500, 502, 503, 504} or status is None,
                 details={"http_status": status},
             ) from exc
-        return [item.embedding for item in response.data]
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        usage_obj = getattr(response, "usage", None)
+        input_tokens = int(getattr(usage_obj, "total_tokens", 0) or 0)
+        usage = ProviderUsage(input_tokens=input_tokens, total_tokens=input_tokens)
+        cost = get_cost_calculator().embedding_cost(model, input_tokens)
+        return EmbeddingResult(
+            vectors=[item.embedding for item in response.data],
+            account=self.account,
+            model=model,
+            usage=usage,
+            latency_ms=latency_ms,
+            estimated_cost_usd=cost,
+        )
 
     async def transcribe(
         self,
@@ -185,12 +204,22 @@ class OpenAIProvider(LLMProvider):
             elif isinstance(item, dict):
                 segments.append(item)
         usage_obj = getattr(response, "usage", None)
+        # verbose_json exposes total audio length as `duration` (seconds); if a
+        # future response shape omits it, fall back to the last segment's end
+        # time rather than silently billing $0 for real audio minutes.
+        duration_seconds = float(getattr(response, "duration", 0.0) or 0.0)
+        if duration_seconds <= 0.0 and segments:
+            duration_seconds = float(segments[-1].get("end") or 0.0)
         usage = ProviderUsage(
             input_tokens=int(getattr(usage_obj, "input_tokens", 0) or 0),
             output_tokens=int(getattr(usage_obj, "output_tokens", 0) or 0),
             total_tokens=int(getattr(usage_obj, "total_tokens", 0) or 0),
+            audio_seconds=duration_seconds,
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
+        cost = get_cost_calculator().transcription_cost(
+            selected_model, seconds=duration_seconds, usage=usage
+        )
         return TranscriptionResult(
             text=str(getattr(response, "text", "")),
             segments=segments,
@@ -199,7 +228,7 @@ class OpenAIProvider(LLMProvider):
             response_id=getattr(response, "id", None),
             usage=usage,
             latency_ms=latency_ms,
-            estimated_cost_usd=0.0,
+            estimated_cost_usd=cost,
         )
 
     async def moderate(self, *, model: str, inputs: list[str]) -> list[dict[str, Any]]:

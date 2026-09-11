@@ -192,10 +192,13 @@ class JobService:
             )
         return existing, True
 
-    async def get_job_by_client_id(self, *, client_job_id: str) -> AIJob:
+    async def get_job_by_client_id(self, *, client_job_id: str, user_id: str) -> AIJob:
+        # backend_request_id is only unique per (user_id, backend_request_id) --
+        # see uq_ai_jobs_user_backend_request -- so user_id must always be part
+        # of this lookup or two tenants' jobs could collide on the same id.
         job = await self.session.scalar(
             select(AIJob)
-            .where(AIJob.backend_request_id == client_job_id)
+            .where(AIJob.backend_request_id == client_job_id, AIJob.user_id == user_id)
             .options(selectinload(AIJob.output), selectinload(AIJob.attempts))
         )
         if not job:
@@ -213,11 +216,11 @@ class JobService:
         )
         return list((await self.session.scalars(statement)).all())
 
-    async def cancel_job_by_client_id(self, *, client_job_id: str) -> AIJob:
+    async def cancel_job_by_client_id(self, *, client_job_id: str, user_id: str) -> AIJob:
         async with self.session.begin():
             job = await self.session.scalar(
                 select(AIJob)
-                .where(AIJob.backend_request_id == client_job_id)
+                .where(AIJob.backend_request_id == client_job_id, AIJob.user_id == user_id)
                 .options(selectinload(AIJob.output))
                 .with_for_update()
             )

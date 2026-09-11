@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.models.ai_job import ProviderUsageMonth
 from app.models.enums import ProviderAccount
-from app.providers.base import ProviderResult, TranscriptionResult
+from app.providers.base import EmbeddingResult, ProviderResult, TranscriptionResult
 
 
 class ProviderBudgetService:
@@ -49,7 +49,7 @@ class ProviderBudgetService:
         usage = await self.usage_for(account)
         return usage is None or usage.estimated_cost_usd < budget
 
-    async def record(self, result: ProviderResult | TranscriptionResult) -> None:
+    async def record(self, result: ProviderResult | TranscriptionResult | EmbeddingResult) -> None:
         usage = await self.usage_for(result.account)
         if usage is None:
             usage = ProviderUsageMonth(
