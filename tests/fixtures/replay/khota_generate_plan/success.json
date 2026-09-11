@@ -1,0 +1,10 @@
+{
+  "kind": "success",
+  "payload": {
+    "title": "خطة دراسة Replay",
+    "strategy_summary": "استراتيجية محفوظة عبر Replay تشرح توزيع الخطة الحتمية المرفقة دون تغيير تواريخها أو مددها.",
+    "assumptions": [],
+    "adaptation_rules": ["أعد توزيع الجلسات غير المكتملة على أول يوم متاح لاحق دون تغيير الجدولة الحتمية."]
+  },
+  "usage": {"input_tokens": 500, "output_tokens": 220, "total_tokens": 720}
+}

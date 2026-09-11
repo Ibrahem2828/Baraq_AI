@@ -1,0 +1,2 @@
+{"id": "kholasa-001", "task_type": "kholasa_generate_summary", "sources": [{"filename": "notes.txt", "content": "هذا نص مصدر يحتوي على نقطة تجريبية أولى ونقطة تجريبية ثانية، وسؤال بطاقة تجريبية وإجابة بطاقة تجريبية، ضمن ملخص تنفيذي مصطنع."}], "input": {"summary_length": "medium", "language": "ar"}}
+{"id": "kholasa-002", "task_type": "kholasa_generate_summary", "sources": [{"filename": "notes_2.txt", "content": "يشرح هذا المصدر نقطة تجريبية أولى ونقطة تجريبية ثانية بإيجاز شديد ضمن ملخص تنفيذي مصطنع."}], "input": {"summary_length": "short", "language": "ar"}}

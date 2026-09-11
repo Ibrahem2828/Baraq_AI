@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Baraq AI Lab — {{ pages[active_tab].title }}</title>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <style>
+    :root{--ink:#132238;--blue:#1263d6;--muted:#5d6d7e;--paper:#f4f7fb;--line:#d9e1eb;--bad:#b42318;--warn:#9a6700}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px system-ui,-apple-system,"Segoe UI",sans-serif}.shell{max-width:1250px;margin:auto;padding:24px}.hero,.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px}.hero{display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}.wide{grid-column:1/-1}.card h2{font-size:17px;margin:0 0 12px}input,select,textarea,button{font:inherit;border:1px solid var(--line);border-radius:8px;padding:9px;width:100%;margin:5px 0}textarea{min-height:135px;direction:ltr}button{background:var(--blue);color:#fff;border:0;cursor:pointer;font-weight:650}button:disabled{background:#96a6b9;cursor:not-allowed}.source{padding:8px;border-bottom:1px solid var(--line)}.muted{color:var(--muted)}.badge{padding:4px 8px;border-radius:99px;background:#eaf1fb;color:#174a93;white-space:nowrap;font-size:13px}.badge.sim{background:#fff3d6;color:var(--warn)}.error{color:var(--bad)}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101828;color:#eaf2ff;padding:12px;border-radius:8px;max-height:480px;overflow:auto}nav.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}nav.tabs a{padding:8px 14px;border-radius:99px;background:#fff;border:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:14px}nav.tabs a.active{background:var(--blue);color:#fff;border-color:var(--blue)}table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:8px;border-bottom:1px solid var(--line);text-align:right}@media(max-width:760px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.hero{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body><main class="shell">
+  <section class="hero">
+    <div><h1>مختبر برّاق للذكاء الاصطناعي</h1><p class="muted">مساحة داخلية هندسية: SQLite + ملفات محلية + استرجاع معجمي مقيد بالمصادر المحددة. غير متاحة في Production.</p></div>
+    <div>
+      <span class="badge">Workspace: {{ workspace.workspace_id }}</span>
+      <span class="badge {{ 'sim' if provider_mode in ('mock', 'replay') else '' }}">PROVIDER_MODE={{ provider_mode }}{{ ' (SIMULATED)' if provider_mode in ('mock', 'replay') else '' }}</span>
+      <span class="badge">Provider: {{ provider_family }}</span>
+    </div>
+  </section>
+
+  <nav class="tabs">
+    {% for key, page in pages.items() %}
+    <a href="{{ page.path }}?workspace_id={{ workspace.workspace_id }}" class="{{ 'active' if key == active_tab else '' }}">{{ page.title }}</a>
+    {% endfor %}
+  </nav>
+
+  {% if active_tab == 'overview' %}
+  <section class="grid">
+    <article class="card"><h2>حالة المزوّد</h2><p class="muted">PROVIDER_MODE = <strong>{{ provider_mode }}</strong> · Provider = <strong>{{ provider_family }}</strong></p><p class="muted">النماذج المضبوطة لكل مستوى جودة: {{ configured_models | join(', ') }} · STT: Local Whisper</p>{% if provider_mode in ('mock', 'replay') %}<p class="muted">شارة المحاكاة: كل تكلفة وزمن استجابة معروضان في هذا الوضع محاكيان وليسا قياساً حقيقياً لمزود.</p>{% endif %}</article>
+    <article class="card"><h2>الإصدارات</h2><p class="muted">Runtime mode: {{ runtime_mode }}</p><p class="muted">هذه الواجهة داخلية للهندسة فقط ولا تُركَّب في Production (APP_ENV=production ⇒ 404).</p></article>
+  </section>
+  {% endif %}
+
+  {% if active_tab == 'sources-rag' %}
+  <section class="grid">
+    <article class="card"><h2>رفع المصادر</h2><form action="/lab/upload" method="post" enctype="multipart/form-data"><input type="hidden" name="workspace_id" value="{{ workspace.workspace_id }}"><input name="files" type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md,.mp3,.wav,.m4a" required><button type="submit">رفع ومعالجة محلياً</button></form><p class="muted">PDF وDOCX وPPTX وTXT وMD وMP3 وWAV وM4A؛ يُرفض عدم تطابق الامتداد وMIME.</p></article>
+    <article class="card wide"><h2>المصادر ومفتش الاسترجاع</h2>{% if sources %}{% for source in sources %}<div class="source"><strong>{{ source.filename }}</strong> <span class="badge">{{ source.status }}</span> <span class="muted">{{ source.size_bytes }} bytes</span> · <a href="/lab/workspaces/{{ workspace.workspace_id }}/sources/{{ source.source_id }}/chunks" target="_blank">chunks / metadata</a></div>{% endfor %}{% else %}<p class="muted">لا توجد مصادر بعد.</p>{% endif %}</article>
+  </section>
+  {% endif %}
+
+  {% if active_tab == 'prompts' %}
+  <section class="grid">
+    <article class="card wide"><h2>سجل الأوامر (Prompt Registry)</h2><table><thead><tr><th>الاسم</th><th>الإصدار</th><th>المهمة</th><th>Checksum</th></tr></thead><tbody>{% for prompt in prompts %}<tr><td>{{ prompt.name }}</td><td>{{ prompt.version }}</td><td>{{ prompt.task_type }}</td><td class="muted">{{ prompt.checksum[:12] }}…</td></tr>{% endfor %}</tbody></table><p class="muted">لا تُعدَّل نسخة production مباشرة؛ أي تعديل يمر عبر Eval ثم Staging/Canary (بند 14).</p></article>
+  </section>
+  {% endif %}
+
+  {% if active_tab in ('fahes', 'kholasa', 'khota', 'rasheed', 'sada') %}
+  <section class="grid">
+    <article class="card wide"><h2>تشغيل {{ pages[active_tab].title }}</h2>
+      <p class="muted">فاحص وخلاصة يستخدمان الأدلة المسترجعة فقط؛ خُطى مجدول محلي حتمي والنموذج يشرح الاستراتيجية فقط؛ رشيد يعتمد فقط على المقاييس التي تدخلها هنا؛ صدى يستخدم Whisper محلياً ثم مزود التوليد المضبوط للتنظيف.</p>
+      <input type="hidden" id="task-fixed" value="{{ TASK_BY_TAB[active_tab] }}">
+      <label>المصادر المحددة (اضغط Ctrl للاختيار المتعدد)<select id="sources" multiple size="5">{% for source in sources %}<option value="{{ source.source_id }}" data-status="{{ source.status }}">{{ source.filename }} ({{ source.status }})</option>{% endfor %}</select></label>
+      <label>معاملات التنفيذ JSON (يمكن تعديلها؛ يُتحقق من المخطط قبل التشغيل)<textarea id="payload"></textarea></label>
+      <label><input id="thinking" type="checkbox" style="width:auto"> رفع مستوى الاستدلال (reasoning_effort=high) لهذه المهمة</label>
+      <button id="run" type="button">تشغيل</button>
+      <p id="run-help" class="muted"></p>
+    </article>
+    <article class="card wide"><h2>المهام والنتائج</h2><div id="jobs" class="muted">لم تُشغّل أي مهمة في هذه الصفحة بعد.</div></article>
+  </section>
+  {% endif %}
+
+  {% if active_tab == 'evals-providers' %}
+  <section class="grid">
+    <article class="card wide"><h2>مقارنة تشغيلات حديثة (Provider / Model side-by-side)</h2>
+      <table><thead><tr><th>Task</th><th>Status</th><th>Provider</th><th>Model</th><th>Tokens</th><th>Cost</th><th>Rendered</th></tr></thead><tbody>
+      {% for job in recent_jobs %}
+        {% set provider_meta = (job.result_json or {}).get('provider', {}) if job.result_json else {} %}
+        <tr>
+          <td>{{ job.task_type }}</td>
+          <td>{{ job.status }}</td>
+          <td>{{ provider_meta.get('name', '-') }}</td>
+          <td>{{ provider_meta.get('model', '-') }}</td>
+          <td>{{ (provider_meta.get('input_tokens', 0) or 0) + (provider_meta.get('output_tokens', 0) or 0) }}</td>
+          <td>{{ provider_meta.get('cost_usd', 0) }}{{ ' (SIMULATED)' if provider_mode in ('mock', 'replay') else '' }}</td>
+          <td><a href="/lab/workspaces/{{ workspace.workspace_id }}/jobs/{{ job.job_id }}/export" target="_blank">JSON</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted">لا توجد تشغيلات بعد في هذا الـWorkspace.</td></tr>
+      {% endfor %}
+      </tbody></table>
+      <p class="muted">في وضع mock/replay فإن التكلفة والجودة معروضتان لأغراض سلامة الكود والعقود فقط؛ لا تُستخدمان كدليل جودة نموذج حي (بند 6/31).</p>
+    </article>
+  </section>
+  {% endif %}
+
+</main>
+<script>
+const workspace={{ workspace.workspace_id | tojson }};
+const fixedTaskEl=document.querySelector('#task-fixed');
+if(fixedTaskEl){
+  const task={value:fixedTaskEl.value};
+  const sources=document.querySelector('#sources'), payload=document.querySelector('#payload'), run=document.querySelector('#run'), help=document.querySelector('#run-help'), jobs=document.querySelector('#jobs');
+  const selected=()=>Array.from(sources.selectedOptions).map(o=>o.value), audio=()=>Array.from(sources.selectedOptions).find(o=>o.dataset.status==='audio_ready')?.value;
+  function defaults(){const ids=selected(),today=new Date().toISOString().slice(0,10),later=new Date(Date.now()+14*86400000).toISOString().slice(0,10);let value={};if(task.value==='kholasa_generate_summary')value={source_ids:ids,summary_length:'medium',include_review_questions:true,include_flashcards:true,language:'ar'};if(task.value==='fahes_generate_quiz')value={source_ids:ids,question_count:5,question_types:['mcq','true_false'],language:'ar'};if(task.value==='khota_generate_plan')value={source_ids:ids,subject_ids:['مادة تجريبية'],start_date:today,end_date:later,daily_available_minutes:60,preferred_session_minutes:30,language:'ar'};if(task.value==='rasheed_recommendations')value={metrics:[{name:'quiz_accuracy',value:60,unit:'percent',period:'current Lab session',authoritative:true}],topic_performance:[],recent_actions:[],language:'ar'};if(task.value==='sada_transcribe_audio')value={source_id:audio()||'',language:'ar',diarize:false,known_terms:[],cleanup_level:'educational'};payload.value=JSON.stringify(value,null,2);help.textContent='اختر المصادر ثم راجع المعاملات قبل التشغيل.';}
+  sources.addEventListener('change',defaults);defaults();
+  async function runTask(){let input;try{input=JSON.parse(payload.value)}catch(_){help.textContent='JSON غير صالح.';return}const response=await fetch(`/lab/workspaces/${workspace}/runs`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task_type:task.value,input,thinking:document.querySelector('#thinking').checked})});const data=await response.json();if(!response.ok){help.textContent=data?.error?.message||'تعذر بدء المهمة';return}const card=document.createElement('div');card.setAttribute('hx-get',`/lab/workspaces/${workspace}/jobs/${data.job_id}/card`);card.setAttribute('hx-trigger','load, every 2s');card.setAttribute('hx-swap','outerHTML');jobs.prepend(card);htmx.process(card)}
+  run.addEventListener('click',runTask);
+}
+</script></body></html>

@@ -1,0 +1,2 @@
+{"id": "khota-001", "task_type": "khota_generate_plan", "sources": [], "input": {"subject_ids": ["math"], "start_date": "2026-09-01", "end_date": "2026-09-07", "daily_available_minutes": 60, "preferred_session_minutes": 30, "language": "en"}}
+{"id": "khota-002", "task_type": "khota_generate_plan", "sources": [], "input": {"subject_ids": ["physics", "chemistry"], "start_date": "2026-09-01", "end_date": "2026-09-03", "daily_available_minutes": 90, "preferred_session_minutes": 45, "excluded_dates": ["2026-09-02"], "language": "ar"}}

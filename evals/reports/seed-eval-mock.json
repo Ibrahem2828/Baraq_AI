@@ -1,0 +1,191 @@
+{
+  "provider_mode": "mock",
+  "generated_at": "2026-09-04T09:47:23.002487+00:00",
+  "total": 8,
+  "passed": 6,
+  "failed": 2,
+  "results": [
+    {
+      "id": "fahes-001",
+      "task_type": "fahes_generate_quiz",
+      "passed": true,
+      "metrics": {
+        "duplicate_question_rate": 0.0,
+        "citation_presence": 1.0,
+        "groundedness": 0.636364
+      },
+      "failures": [],
+      "provider": {
+        "name": "mock",
+        "model": "mock-high_quality",
+        "response_id": "mock-fahes_generate_quiz",
+        "latency_ms": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "prompt_trace": {
+          "name": "fahes_generate_quiz",
+          "version": "1.1.0",
+          "checksum": "cc05892c406308a3018dfbb6ffd781722d94ee93bb5779639c6b79ee0223c669",
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    {
+      "id": "fahes-002",
+      "task_type": "fahes_generate_quiz",
+      "passed": true,
+      "metrics": {
+        "duplicate_question_rate": 0.0,
+        "citation_presence": 1.0,
+        "groundedness": 0.545455
+      },
+      "failures": [],
+      "provider": {
+        "name": "mock",
+        "model": "mock-high_quality",
+        "response_id": "mock-fahes_generate_quiz",
+        "latency_ms": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "prompt_trace": {
+          "name": "fahes_generate_quiz",
+          "version": "1.1.0",
+          "checksum": "cc05892c406308a3018dfbb6ffd781722d94ee93bb5779639c6b79ee0223c669",
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    {
+      "id": "kholasa-001",
+      "task_type": "kholasa_generate_summary",
+      "passed": false,
+      "metrics": {
+        "groundedness": 0.4642855
+      },
+      "failures": [
+        "groundedness_below_floor"
+      ],
+      "provider": {
+        "name": "mock",
+        "model": "mock-balanced",
+        "response_id": "mock-kholasa_generate_summary",
+        "latency_ms": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "prompt_trace": {
+          "name": "kholasa_summarize",
+          "version": "1.1.1",
+          "checksum": "7bc70d8521b3357e8f1ce61e3beb48d372371a3dd324c067a3b34a6846eb8b7f",
+          "reasoning_effort": "low"
+        }
+      }
+    },
+    {
+      "id": "kholasa-002",
+      "task_type": "kholasa_generate_summary",
+      "passed": false,
+      "metrics": {
+        "groundedness": 0.375
+      },
+      "failures": [
+        "groundedness_below_floor"
+      ],
+      "provider": {
+        "name": "mock",
+        "model": "mock-balanced",
+        "response_id": "mock-kholasa_generate_summary",
+        "latency_ms": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "prompt_trace": {
+          "name": "kholasa_summarize",
+          "version": "1.1.1",
+          "checksum": "7bc70d8521b3357e8f1ce61e3beb48d372371a3dd324c067a3b34a6846eb8b7f",
+          "reasoning_effort": "low"
+        }
+      }
+    },
+    {
+      "id": "khota-001",
+      "task_type": "khota_generate_plan",
+      "passed": true,
+      "metrics": {
+        "plan_day_count": 7.0
+      },
+      "failures": [],
+      "provider": {
+        "name": "local_scheduler",
+        "model": null,
+        "latency_ms": 0,
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "id": "khota-002",
+      "task_type": "khota_generate_plan",
+      "passed": true,
+      "metrics": {
+        "plan_day_count": 2.0
+      },
+      "failures": [],
+      "provider": {
+        "name": "local_scheduler",
+        "model": null,
+        "latency_ms": 0,
+        "cost_usd": 0.0
+      }
+    },
+    {
+      "id": "rasheed-001",
+      "task_type": "rasheed_recommendations",
+      "passed": true,
+      "metrics": {
+        "recommendation_count": 1.0
+      },
+      "failures": [],
+      "provider": {
+        "name": "mock",
+        "model": "mock-balanced",
+        "response_id": "mock-rasheed_recommendations",
+        "latency_ms": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "prompt_trace": {
+          "name": "rasheed_recommend",
+          "version": "1.1.0",
+          "checksum": "85673b7c9e806cc625128820d3989a87ea2ca1bf918329ba706976a36b00a9ab",
+          "reasoning_effort": "medium"
+        }
+      }
+    },
+    {
+      "id": "rasheed-002",
+      "task_type": "rasheed_recommendations",
+      "passed": true,
+      "metrics": {
+        "recommendation_count": 1.0
+      },
+      "failures": [],
+      "provider": {
+        "name": "mock",
+        "model": "mock-balanced",
+        "response_id": "mock-rasheed_recommendations",
+        "latency_ms": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+        "prompt_trace": {
+          "name": "rasheed_recommend",
+          "version": "1.1.0",
+          "checksum": "85673b7c9e806cc625128820d3989a87ea2ca1bf918329ba706976a36b00a9ab",
+          "reasoning_effort": "medium"
+        }
+      }
+    }
+  ]
+}

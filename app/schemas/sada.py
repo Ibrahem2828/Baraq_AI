@@ -1,0 +1,32 @@
+from __future__ import annotations
+
+from pydantic import Field
+
+from app.schemas.common import StrictModel
+
+
+class SadaRequest(StrictModel):
+    source_id: str
+    language: str = Field(default="ar", pattern="^[a-z]{2}(-[A-Z]{2})?$")
+    diarize: bool = False
+    known_terms: list[str] = Field(default_factory=list, max_length=200)
+    cleanup_level: str = Field(default="educational", pattern="^(literal|light|educational)$")
+
+
+class TranscriptSegment(StrictModel):
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(ge=0)
+    text: str = Field(min_length=1)
+    speaker: str | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+
+
+class SadaResult(StrictModel):
+    full_transcript: str = Field(min_length=1)
+    cleaned_transcript: str = Field(min_length=1)
+    segments: list[TranscriptSegment] = Field(default_factory=list)
+    detected_topics: list[str] = Field(default_factory=list, max_length=50)
+    important_terms: list[str] = Field(default_factory=list, max_length=100)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    language: str
+    warnings: list[str] = Field(default_factory=list, max_length=20)

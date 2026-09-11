@@ -1,0 +1,5 @@
+<article class="source" {% if job.status not in ['completed','failed','canceled'] %}hx-get="/lab/workspaces/{{ job.workspace_id }}/jobs/{{ job.job_id }}/card" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <strong>{{ job.task_type }}</strong> <span class="badge">{{ job.status }}</span> — {{ job.progress_percent }}% · {{ job.progress_message }}
+  {% if job.error_code %}<p class="error">{{ job.error_code }}: {{ job.error_message }}</p>{% endif %}
+  {% if result_pretty %}<p><a href="/lab/workspaces/{{ job.workspace_id }}/jobs/{{ job.job_id }}/export" target="_blank">تصدير JSON</a>{% if job.task_type == 'sada_transcribe_audio' %} · <button style="display:inline;width:auto" hx-post="/lab/workspaces/{{ job.workspace_id }}/jobs/{{ job.job_id }}/transcript-source" hx-swap="none">حفظ النص المنظف كمصدر</button>{% endif %}</p><pre>{{ result_pretty }}</pre>{% endif %}
+</article>
