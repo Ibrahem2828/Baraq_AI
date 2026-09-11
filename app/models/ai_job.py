@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Enum,
     Float,
@@ -107,6 +108,7 @@ class AIOutput(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         JSONB, default=list, nullable=False
     )
     validation_report: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    result_cache_hit: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     job: Mapped[AIJob] = relationship(back_populates="output")
 

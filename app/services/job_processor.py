@@ -16,13 +16,18 @@ from app.core.telemetry import AI_LATENCY, AI_REQUESTS
 from app.db.session import AsyncSessionLocal
 from app.models.ai_job import AIJob, AIOutput, JobDispatchOutboxEvent
 from app.models.enums import JobStatus
-from app.pipelines.base import PipelineContext
+from app.pipelines.base import PipelineContext, PipelineResult
 from app.pipelines.registry import get_pipeline
+from app.prompts.registry import get_prompt_registry
+from app.providers.base import ProviderResult, ProviderUsage
 from app.providers.router import ProviderRouter
 from app.rag.embeddings import EmbeddingService
+from app.schemas.common import Citation
 from app.services.backend_client import BackendClient
 from app.services.generation import StructuredGenerationService
 from app.services.job_state_machine import TERMINAL_JOB_STATES, JobStateMachine
+from app.services.result_cache import ResultCacheService, cache_hit_metadata, compute_fingerprint
+from app.services.routing_config import get_routing_config
 from app.services.source_ingestion import SourceIngestionService
 from app.services.webhook_delivery import RESULT_WEBHOOK_EVENT
 
@@ -53,6 +58,30 @@ async def _transition(
 async def _cancellation_requested(session: AsyncSession, job_id: str) -> bool:
     current_status = await session.scalar(select(AIJob.status).where(AIJob.id == uuid.UUID(job_id)))
     return current_status == JobStatus.CANCELED
+
+
+def _pipeline_result_from_cache(cached: Any) -> PipelineResult:
+    """Reconstructs a PipelineResult from a result-cache hit. The provider
+    usage/cost here is deliberately zeroed -- no real call happened this
+    time -- while `source_model_name`/`source_provider_account` (kept for
+    provenance) still say which real call originally produced this content."""
+    return PipelineResult(
+        result_json=cached.result_json,
+        citations=[Citation.model_validate(item) for item in cached.citations],
+        provider_result=ProviderResult(
+            data=cached.result_json,
+            account=cached.source_provider_account,
+            model=cached.source_model_name,
+            response_id=None,
+            usage=ProviderUsage(),
+            estimated_cost_usd=0.0,
+            metadata=cache_hit_metadata(cached),
+        ),
+        quality_score=cached.quality_score,
+        groundedness_score=cached.groundedness_score,
+        warnings=list(cached.warnings),
+        security_flags=list(cached.security_flags),
+    )
 
 
 def _extract_texts(value: Any, *, out: list[str] | None = None) -> list[str]:
@@ -104,21 +133,49 @@ async def process_job(job_id: str) -> None:
             )
             pipeline = get_pipeline(job.task_type)
             job.pipeline_version = pipeline.version
+
+            # Cacheable task types: resolve the prompt/routing up front (the
+            # same static, task_type-only lookup each pipeline does inside
+            # execute()) so a fingerprint can be checked *before* paying for
+            # generation. Non-cacheable types (e.g. Khota -- see
+            # ResultCacheService's docstring) skip this and always execute.
+            fingerprint: str | None = None
+            if job.task_type in ResultCacheService.CACHEABLE_TASK_TYPES:
+                routing = get_routing_config().get(job.task_type.value)
+                prompt = get_prompt_registry().get(routing.prompt) if routing.prompt else None
+                if prompt is not None:
+                    job.prompt_name = prompt.name
+                    job.prompt_version = prompt.version
+                    job.prompt_checksum = prompt.checksum
+                    fingerprint = compute_fingerprint(
+                        user_id=job.user_id,
+                        task_type=job.task_type.value,
+                        input_hash=job.input_hash,
+                        source_versions=job.source_versions,
+                        prompt_checksum=prompt.checksum,
+                        pipeline_version=pipeline.version,
+                    )
+            cache = ResultCacheService(session)
+            cached = await cache.lookup(fingerprint) if fingerprint else None
+
             await _transition(
                 session,
                 job,
                 status=JobStatus.RETRIEVING,
                 message="Retrieving authoritative data and sources",
             )
-            result = await pipeline.execute(
-                PipelineContext(
-                    session=session,
-                    job=job,
-                    backend=backend,
-                    generation=generation,
-                    ingestion=ingestion,
+            if cached is not None:
+                result = _pipeline_result_from_cache(cached)
+            else:
+                result = await pipeline.execute(
+                    PipelineContext(
+                        session=session,
+                        job=job,
+                        backend=backend,
+                        generation=generation,
+                        ingestion=ingestion,
+                    )
                 )
-            )
             if await _cancellation_requested(session, job_id):
                 return
             # The pipeline owns retrieval/generation.  This persisted stage is
@@ -132,10 +189,15 @@ async def process_job(job_id: str) -> None:
                 return
             if locked_job.output is not None or locked_job.status == JobStatus.COMPLETED:
                 return
-            moderation_flags = await generation.moderate(
-                routing_key=f"{locked_job.id}:moderation",
-                texts=_extract_texts(result.result_json),
-            )
+            if cached is not None:
+                # Identical content already passed moderation once; a cache
+                # hit reuses that verdict instead of re-screening.
+                moderation_flags: list[dict[str, Any]] = []
+            else:
+                moderation_flags = await generation.moderate(
+                    routing_key=f"{locked_job.id}:moderation",
+                    texts=_extract_texts(result.result_json),
+                )
             security_flags = [*result.security_flags, *moderation_flags]
             output = AIOutput(
                 job_id=locked_job.id,
@@ -155,6 +217,7 @@ async def process_job(job_id: str) -> None:
                 request_id=locked_job.request_id,
                 warnings=result.warnings,
                 security_flags=security_flags,
+                result_cache_hit=cached is not None,
                 validation_report={
                     "status": "flagged" if moderation_flags else "valid",
                     "pipeline": locked_job.task_type.value,
@@ -162,6 +225,7 @@ async def process_job(job_id: str) -> None:
                     "knowledge_policy": pipeline.knowledge_policy.value,
                     "prompt_checksum": locked_job.prompt_checksum,
                     "source_versions": locked_job.source_versions,
+                    "result_cache_hit": cached is not None,
                 },
             )
             session.add(output)
@@ -181,6 +245,15 @@ async def process_job(job_id: str) -> None:
             AI_LATENCY.labels(job.task_type.value).observe(
                 (datetime.now(UTC) - started).total_seconds()
             )
+            if fingerprint is not None and cached is None and not moderation_flags:
+                # Only a fresh, unflagged generation is worth caching -- and
+                # only once the job is confirmed COMPLETED and committed.
+                await cache.store(
+                    fingerprint=fingerprint,
+                    user_id=job.user_id,
+                    task_type=job.task_type,
+                    result=result,
+                )
     except Exception as exc:
         logger.exception("ai_job_failed", job_id=job_id, request_id=request_id, error=str(exc))
         async with AsyncSessionLocal() as session:
