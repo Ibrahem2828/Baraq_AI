@@ -15,6 +15,7 @@ from app.prompts.registry import PromptSpec
 from app.providers.base import ProviderResult
 from app.providers.capabilities import Capability
 from app.providers.router import ProviderRouter
+from app.services.cost import estimate_tokens, get_cost_calculator
 from app.services.provider_budget import ProviderBudgetService
 from app.services.routing_config import TaskRouting
 
@@ -45,9 +46,21 @@ class StructuredGenerationService:
         for candidate in candidates:
             if candidate.instance is None:
                 continue
-            if not await self.budget.has_budget(candidate.account_id):
-                continue
+            # Worst-case cost ceiling for one call to this candidate:
+            # max_output_tokens is a real, provider-enforced bound (the call
+            # cannot emit more), input is a char/4 estimate since exact input
+            # tokens aren't known before the call is made.
+            max_call_cost = get_cost_calculator().max_generation_cost(
+                candidate.model,
+                estimated_input_tokens=estimate_tokens(prompt.system_prompt + user_input),
+                max_output_tokens=candidate.max_output_tokens,
+            )
             for _ in range(max(1, self.router.settings.provider_max_retries + 1)):
+                reservation = await self.budget.reserve(candidate.account_id, max_call_cost)
+                if not reservation.granted:
+                    # Budget for this account is exhausted -- stop retrying it
+                    # and let the outer loop try the next fallback candidate.
+                    break
                 attempt_number += 1
                 attempt = ProviderAttempt(
                     job_id=job.id,
@@ -83,7 +96,7 @@ class StructuredGenerationService:
                     attempt.output_tokens = result.usage.output_tokens
                     attempt.estimated_cost_usd = result.estimated_cost_usd
                     await self.router.circuit.record_success(candidate.account_id)
-                    await self.budget.record(result)
+                    await self.budget.commit_actual(reservation, result)
                     account_label = candidate.account_id.value
                     AI_PROVIDER_ATTEMPTS.labels(account_label, candidate.model, "succeeded").inc()
                     AI_PROVIDER_LATENCY.labels(account_label, candidate.model).observe(
@@ -101,6 +114,7 @@ class StructuredGenerationService:
                     attempt.error_message = exc.message[:4000]
                     attempt.retryable = exc.retryable
                     attempt.latency_ms = elapsed_ms
+                    await self.budget.release(reservation)
                     await self.session.flush()
                     AI_PROVIDER_ATTEMPTS.labels(
                         candidate.account_id.value, candidate.model, "failed"
@@ -117,6 +131,7 @@ class StructuredGenerationService:
                     attempt.error_message = str(exc)[:4000]
                     attempt.retryable = True
                     attempt.latency_ms = elapsed_ms
+                    await self.budget.release(reservation)
                     await self.session.flush()
                     await self.router.circuit.record_failure(candidate.account_id)
                     last_error = exc

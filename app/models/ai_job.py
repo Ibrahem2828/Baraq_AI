@@ -186,3 +186,8 @@ class ProviderUsageMonth(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     estimated_cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # Sum of in-flight ProviderBudgetService.reserve() calls not yet released
+    # or committed -- included in the budget check so concurrent workers
+    # cannot each pass a stale "committed so far" check and jointly overspend
+    # before any of them finishes and records real cost.
+    reserved_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

@@ -113,7 +113,12 @@ class GeminiProvider(LLMProvider):
             total_tokens=int(getattr(usage_meta, "total_token_count", 0) or 0),
             cached_input_tokens=int(getattr(usage_meta, "cached_content_token_count", 0) or 0),
         )
-        cost = get_cost_calculator().token_cost(model, usage)
+        cost = get_cost_calculator().token_cost(
+            model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+        )
         return ProviderResult(
             data=validated.model_dump(mode="json"),
             account=self.account,

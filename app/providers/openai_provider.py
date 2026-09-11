@@ -125,7 +125,12 @@ class OpenAIProvider(LLMProvider):
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         usage = self._usage_from_response(response)
-        cost = get_cost_calculator().token_cost(model, usage)
+        cost = get_cost_calculator().token_cost(
+            model,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+        )
         return ProviderResult(
             data=validated.model_dump(mode="json"),
             account=self.account,
@@ -218,7 +223,10 @@ class OpenAIProvider(LLMProvider):
         )
         latency_ms = int((time.perf_counter() - started) * 1000)
         cost = get_cost_calculator().transcription_cost(
-            selected_model, seconds=duration_seconds, usage=usage
+            selected_model,
+            seconds=duration_seconds,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
         )
         return TranscriptionResult(
             text=str(getattr(response, "text", "")),

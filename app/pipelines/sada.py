@@ -16,6 +16,7 @@ from app.providers.model_aliases import transcription_model_for
 from app.rag.grounding import transcript_preservation_score
 from app.rag.guard import sanitize_untrusted_source
 from app.schemas.sada import SadaRequest, SadaResult, TranscriptSegment
+from app.services.cost import get_cost_calculator
 from app.services.knowledge_policy import KnowledgePolicy
 from app.services.routing_config import get_routing_config
 from app.utils.hash import sha256_bytes
@@ -59,9 +60,20 @@ class SadaPipeline(AIPipeline):
         for number, candidate in enumerate(candidates, start=1):
             if candidate.instance is None:
                 continue
-            if not await context.generation.budget.has_budget(candidate.account_id):
-                continue
             model = transcription_model_for(settings, candidate.provider)
+            # Duration is only known once the provider returns; the audio
+            # length ceiling this job enforces (settings.max_audio_seconds)
+            # is the only pre-call bound available, so it's used as the
+            # reservation ceiling for every transcription model regardless
+            # of whether it's actually duration- or token-priced.
+            max_call_cost = get_cost_calculator().max_transcription_cost(
+                model, max_seconds=settings.max_audio_seconds
+            )
+            reservation = await context.generation.budget.reserve(
+                candidate.account_id, max_call_cost
+            )
+            if not reservation.granted:
+                continue
             attempt = ProviderAttempt(
                 job_id=context.job.id,
                 attempt_number=len(context.job.attempts) + number,
@@ -89,7 +101,8 @@ class SadaPipeline(AIPipeline):
                 attempt.output_tokens = transcription.usage.output_tokens
                 attempt.estimated_cost_usd = transcription.estimated_cost_usd
                 await context.generation.router.circuit.record_success(candidate.account_id)
-                await context.generation.budget.record(
+                await context.generation.budget.commit_actual(
+                    reservation,
                     ProviderResult(
                         data={"transcription": True},
                         account=transcription.account,
@@ -98,7 +111,7 @@ class SadaPipeline(AIPipeline):
                         usage=transcription.usage,
                         latency_ms=transcription.latency_ms,
                         estimated_cost_usd=transcription.estimated_cost_usd,
-                    )
+                    ),
                 )
                 await context.session.commit()
                 break
@@ -109,6 +122,7 @@ class SadaPipeline(AIPipeline):
                 attempt.error_message = str(exc)[:4000]
                 attempt.retryable = True
                 attempt.latency_ms = int((time.perf_counter() - started) * 1000)
+                await context.generation.budget.release(reservation)
                 await context.generation.router.circuit.record_failure(candidate.account_id)
                 await context.session.commit()
                 if not context.job.allow_fallback:
