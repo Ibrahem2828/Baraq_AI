@@ -88,13 +88,12 @@ MOCK_SUCCESS_PAYLOADS: dict[str, dict[str, Any]] = {
         "confidence_note": "استنتاج وصفي غير معايَر إحصائياً؛ لأغراض اختبار Mock فقط.",
     },
     "sada_transcribe_audio": {
-        "full_transcript": "هذا نص تفريغ خام تجريبي من مزود Mock.",
+        # Matches SadaCleanupResult, not the full SadaResult: full_transcript/
+        # segments/duration_seconds/language are owned by STT and assembled
+        # by SadaPipeline itself, never requested from the LLM.
         "cleaned_transcript": "هذا نص منظف تجريبي من مزود Mock.",
-        "segments": [],
         "detected_topics": ["موضوع تجريبي"],
         "important_terms": ["مصطلح تجريبي"],
-        "duration_seconds": 5.0,
-        "language": "ar",
         "warnings": [],
     },
     "khota_generate_plan": {

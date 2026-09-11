@@ -26,7 +26,7 @@ from app.schemas.fahes import FahesRequest, FahesResult
 from app.schemas.kholasa import KholasaRequest, KholasaResult
 from app.schemas.khota import KhotaRequest, KhotaResult
 from app.schemas.rasheed import RasheedRequest, RasheedResult
-from app.schemas.sada import SadaRequest, SadaResult, TranscriptSegment
+from app.schemas.sada import SadaCleanupResult, SadaRequest, SadaResult, TranscriptSegment
 from app.services.khota_scheduler import build_plan_days
 from app.services.routing_config import get_routing_config
 
@@ -342,30 +342,30 @@ class BaraqAIApplication:
         )
         raw_segments = [TranscriptSegment.model_validate(item) for item in raw.segments]
         prompt = get_prompt_registry().get("sada_cleanup_transcript")
+        segment_timeline = [
+            {"start": item.start_seconds, "end": item.end_seconds, "speaker": item.speaker}
+            for item in raw_segments
+        ]
         candidate = await self._generate(
             task_type=TaskType.SADA_TRANSCRIBE_AUDIO,
             user_input=prompt.render_user(
                 task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
                 raw_transcript=raw.text,
-                segments=json.dumps(
-                    [item.model_dump(mode="json") for item in raw_segments], ensure_ascii=False
-                ),
+                segment_timeline=json.dumps(segment_timeline, ensure_ascii=False),
             ),
-            output_model=SadaResult,
+            output_model=SadaCleanupResult,
             thinking=thinking,
         )
-        generated = SadaResult.model_validate(candidate.data)
-        warnings = list(generated.warnings)
-        if generated.full_transcript != raw.text:
-            warnings.append("The raw Local Whisper transcript was preserved verbatim.")
-        result = generated.model_copy(
-            update={
-                "full_transcript": raw.text,
-                "segments": raw_segments,
-                "duration_seconds": raw.duration_seconds,
-                "language": request.language,
-                "warnings": warnings,
-            }
+        cleanup = SadaCleanupResult.model_validate(candidate.data)
+        result = SadaResult(
+            full_transcript=raw.text,
+            cleaned_transcript=cleanup.cleaned_transcript,
+            segments=raw_segments,
+            detected_topics=cleanup.detected_topics,
+            important_terms=cleanup.important_terms,
+            duration_seconds=raw.duration_seconds,
+            language=request.language,
+            warnings=cleanup.warnings,
         )
         return self._result(
             result=result,

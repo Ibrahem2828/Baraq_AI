@@ -1,16 +1,10 @@
 {
   "kind": "success",
   "payload": {
-    "full_transcript": "هذا نص تفريغ خام محفوظ عبر Replay لاختبار مسار صدى دون أي استدعاء شبكة.",
     "cleaned_transcript": "هذا نص منظف محفوظ عبر Replay لاختبار مسار صدى دون أي استدعاء شبكة.",
-    "segments": [
-      {"start_seconds": 0.0, "end_seconds": 3.5, "text": "هذا نص تفريغ خام محفوظ عبر Replay", "confidence": 0.95}
-    ],
     "detected_topics": ["موضوع Replay"],
     "important_terms": ["مصطلح Replay"],
-    "duration_seconds": 3.5,
-    "language": "ar",
     "warnings": []
   },
-  "usage": {"input_tokens": 300, "output_tokens": 180, "total_tokens": 480}
+  "usage": {"input_tokens": 150, "output_tokens": 90, "total_tokens": 240}
 }

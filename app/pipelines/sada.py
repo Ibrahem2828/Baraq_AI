@@ -10,16 +10,41 @@ from app.models.ai_job import ProviderAttempt
 from app.models.enums import ProviderAttemptStatus
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult
 from app.prompts.registry import get_prompt_registry
-from app.providers.base import ProviderResult
+from app.providers.base import ProviderResult, TranscriptionResult
 from app.providers.capabilities import Capability
 from app.providers.model_aliases import transcription_model_for
 from app.rag.grounding import transcript_preservation_score
 from app.rag.guard import sanitize_untrusted_source
-from app.schemas.sada import SadaRequest, SadaResult, TranscriptSegment
+from app.schemas.sada import SadaCleanupResult, SadaRequest, SadaResult, TranscriptSegment
 from app.services.cost import get_cost_calculator
 from app.services.knowledge_policy import KnowledgePolicy
 from app.services.routing_config import get_routing_config
 from app.utils.hash import sha256_bytes
+
+
+def _transcription_as_provider_result(transcription: TranscriptionResult) -> ProviderResult:
+    """Wrap a transcription call's usage/cost as a ProviderResult -- used
+    both to reconcile the transcription budget reservation and, for
+    cleanup_level="literal" (no cleanup LLM call at all), as the
+    PipelineResult.provider_result the job output/dashboards attribute cost
+    to, so a literal-mode job's real transcription cost is never silently
+    missing from AIOutput."""
+    return ProviderResult(
+        data={"transcription": True},
+        account=transcription.account,
+        model=transcription.model,
+        response_id=transcription.response_id,
+        usage=transcription.usage,
+        latency_ms=transcription.latency_ms,
+        estimated_cost_usd=transcription.estimated_cost_usd,
+    )
+
+
+def _normalize_literal_transcript(text: str) -> str:
+    """Whitespace-only normalization for cleanup_level="literal": collapses
+    runs of spaces/tabs/newlines, changes no words. No LLM call is made for
+    this level (spec: STT -> normalized transcript -> return)."""
+    return " ".join(text.split())
 
 
 class SadaPipeline(AIPipeline):
@@ -102,16 +127,7 @@ class SadaPipeline(AIPipeline):
                 attempt.estimated_cost_usd = transcription.estimated_cost_usd
                 await context.generation.router.circuit.record_success(candidate.account_id)
                 await context.generation.budget.commit_actual(
-                    reservation,
-                    ProviderResult(
-                        data={"transcription": True},
-                        account=transcription.account,
-                        model=transcription.model,
-                        response_id=transcription.response_id,
-                        usage=transcription.usage,
-                        latency_ms=transcription.latency_ms,
-                        estimated_cost_usd=transcription.estimated_cost_usd,
-                    ),
+                    reservation, _transcription_as_provider_result(transcription)
                 )
                 await context.session.commit()
                 break
@@ -143,24 +159,6 @@ class SadaPipeline(AIPipeline):
         # prompt, instead of trusting it implicitly.
         guarded_transcript = sanitize_untrusted_source(transcription.text)
 
-        routing = get_routing_config().get(context.job.task_type.value)
-        prompt = get_prompt_registry().get(routing.prompt or "sada_cleanup_transcript")
-        context.job.prompt_name = prompt.name
-        context.job.prompt_version = prompt.version
-        context.job.prompt_checksum = prompt.checksum
-        user_input = prompt.render_user(
-            task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
-            raw_transcript=guarded_transcript.safe_text,
-            segments=json.dumps(transcription.segments, ensure_ascii=False),
-        )
-        cleanup = await context.generation.generate(
-            job=context.job,
-            routing=routing,
-            prompt=prompt,
-            user_input=user_input,
-            output_model=SadaResult,
-        )
-        result = SadaResult.model_validate(cleanup.data)
         normalized_segments: list[TranscriptSegment] = []
         for segment in transcription.segments:
             start = float(segment.get("start", segment.get("start_seconds", 0)) or 0)
@@ -176,22 +174,66 @@ class SadaPipeline(AIPipeline):
                         confidence=segment.get("confidence"),
                     )
                 )
-        result = result.model_copy(
-            update={
-                "full_transcript": transcription.text,
-                "segments": normalized_segments or result.segments,
-                "language": request.language,
-            }
+
+        if request.cleanup_level == "literal":
+            # No LLM call: STT -> deterministic normalization -> return.
+            cleaned_transcript = _normalize_literal_transcript(transcription.text)
+            detected_topics: list[str] = []
+            important_terms: list[str] = []
+            cleanup_warnings: list[str] = []
+            provider_result = _transcription_as_provider_result(transcription)
+        else:
+            routing = get_routing_config().get(context.job.task_type.value)
+            prompt = get_prompt_registry().get(routing.prompt or "sada_cleanup_transcript")
+            context.job.prompt_name = prompt.name
+            context.job.prompt_version = prompt.version
+            context.job.prompt_checksum = prompt.checksum
+            # Segment *timing* (start/end/speaker) is genuinely new
+            # information the model needs to localize warnings -- segment
+            # *text* is not sent again here, since it's the same words
+            # already in raw_transcript below (was previously duplicated,
+            # roughly doubling input tokens for the transcript's content).
+            segment_timeline = [
+                {"start": seg.start_seconds, "end": seg.end_seconds, "speaker": seg.speaker}
+                for seg in normalized_segments
+            ]
+            user_input = prompt.render_user(
+                task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
+                raw_transcript=guarded_transcript.safe_text,
+                segment_timeline=json.dumps(segment_timeline, ensure_ascii=False),
+            )
+            cleanup = await context.generation.generate(
+                job=context.job,
+                routing=routing,
+                prompt=prompt,
+                user_input=user_input,
+                output_model=SadaCleanupResult,
+            )
+            cleanup_result = SadaCleanupResult.model_validate(cleanup.data)
+            cleaned_transcript = cleanup_result.cleaned_transcript
+            detected_topics = cleanup_result.detected_topics
+            important_terms = cleanup_result.important_terms
+            cleanup_warnings = cleanup_result.warnings
+            provider_result = cleanup
+
+        result = SadaResult(
+            full_transcript=transcription.text,
+            cleaned_transcript=cleaned_transcript,
+            segments=normalized_segments,
+            detected_topics=detected_topics,
+            important_terms=important_terms,
+            duration_seconds=transcription.usage.audio_seconds or None,
+            language=request.language,
+            warnings=cleanup_warnings,
         )
         preservation = transcript_preservation_score(
             raw_transcript=transcription.text,
             cleaned_transcript=result.cleaned_transcript,
         )
-        # Cleanup supplies final provider metadata; transcription remains audited.
         return PipelineResult(
             result_json=result.model_dump(mode="json"),
             citations=[],
-            provider_result=cleanup,
+            provider_result=provider_result,
             quality_score=preservation,
             groundedness_score=preservation,
             warnings=["suspicious_source_content"] if guarded_transcript.suspicious else [],

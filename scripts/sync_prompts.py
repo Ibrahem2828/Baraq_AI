@@ -13,18 +13,21 @@ from app.schemas.fahes import FahesResult
 from app.schemas.kholasa import KholasaResult
 from app.schemas.khota import KhotaNarrative
 from app.schemas.rasheed import RasheedResult
-from app.schemas.sada import SadaResult
+from app.schemas.sada import SadaCleanupResult
 
 # The schema each prompt's LLM call is actually validated against. Khota maps
 # to the narrative-only schema, not the full KhotaResult: the day/task
 # schedule is produced by the deterministic scheduler
 # (app/services/khota_scheduler.py), never by the model (spec section 17).
+# Sada maps to the cleanup-only schema, not the full SadaResult:
+# full_transcript/segments/duration_seconds/language are owned by STT and
+# assembled by SadaPipeline itself, never produced by the model.
 SCHEMAS: dict[str, type[BaseModel]] = {
     "fahes_generate_quiz": FahesResult,
     "khota_generate_plan": KhotaNarrative,
     "rasheed_recommendations": RasheedResult,
     "kholasa_generate_summary": KholasaResult,
-    "sada_transcribe_audio": SadaResult,
+    "sada_transcribe_audio": SadaCleanupResult,
 }
 
 

@@ -9,14 +9,14 @@ from app.schemas.fahes import FahesResult
 from app.schemas.kholasa import KholasaResult
 from app.schemas.khota import KhotaNarrative
 from app.schemas.rasheed import RasheedResult
-from app.schemas.sada import SadaResult
+from app.schemas.sada import SadaCleanupResult
 
 KNOWN_TASKS: list[tuple[str, type[BaseModel]]] = [
     ("fahes_generate_quiz", FahesResult),
     ("kholasa_generate_summary", KholasaResult),
     ("khota_generate_plan", KhotaNarrative),
     ("rasheed_recommendations", RasheedResult),
-    ("sada_transcribe_audio", SadaResult),
+    ("sada_transcribe_audio", SadaCleanupResult),
 ]
 
 
