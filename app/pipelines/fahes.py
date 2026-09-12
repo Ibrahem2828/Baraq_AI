@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from app.core.errors import ValidationFailure
+from app.core.profanity import redact_model_list, redact_model_text
 from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult
 from app.prompts.registry import get_prompt_registry
@@ -63,6 +64,17 @@ class FahesPipeline(AIPipeline):
             output_model=FahesResult,
         )
         result = FahesResult.model_validate(provider_result.data)
+        # Blueprint 02_AI_PLATFORM.md §3.4: educational output must not
+        # generate profanity as questions/choices without educational
+        # necessity + explicit policy allowance -- neither applies here, so
+        # any hit is redacted unconditionally.
+        result, title_redacted = redact_model_text(result, text_fields=("title", "description"))
+        questions, questions_redacted = redact_model_list(
+            result.questions, text_fields=("question", "explanation"), list_fields=("choices",)
+        )
+        profanity_redacted = title_redacted or questions_redacted
+        if questions_redacted:
+            result = result.model_copy(update={"questions": questions})
         evidence_texts = [citation.excerpt for citation in rag.citations]
         grounding_scores: list[float] = []
         for question in result.questions:
@@ -89,7 +101,8 @@ class FahesPipeline(AIPipeline):
             provider_result=provider_result,
             quality_score=quality,
             groundedness_score=groundedness,
-            warnings=["suspicious_source_content"] if rag.suspicious_source_detected else [],
+            warnings=(["suspicious_source_content"] if rag.suspicious_source_detected else [])
+            + (["profanity_redacted"] if profanity_redacted else []),
             security_flags=suspicious_source_flags(request.source_ids)
             if rag.suspicious_source_detected
             else [],

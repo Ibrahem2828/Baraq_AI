@@ -5,6 +5,7 @@ import time
 
 from app.core.config import get_settings
 from app.core.errors import ProviderError, ValidationFailure
+from app.core.profanity import redact_model_list, redact_profanity
 from app.core.security_flags import suspicious_source_flags
 from app.models.ai_job import ProviderAttempt
 from app.models.enums import ProviderAttemptStatus
@@ -232,13 +233,26 @@ class SadaPipeline(AIPipeline):
             raw_transcript=transcription.text,
             cleaned_transcript=result.cleaned_transcript,
         )
+        # Blueprint 02_AI_PLATFORM.md §3.4: the *displayed* transcript may
+        # show a redacted form like "[لفظ محجوب]", keeping the timestamp --
+        # measured against full_transcript (the raw, internally-kept copy)
+        # above, before this redaction, so the fidelity check isn't skewed
+        # by our own redaction pass.
+        redacted_cleaned, cleaned_hit = redact_profanity(result.cleaned_transcript)
+        redacted_segments, segments_hit = redact_model_list(result.segments, text_fields=("text",))
+        profanity_redacted = cleaned_hit or segments_hit
+        if profanity_redacted:
+            result = result.model_copy(
+                update={"cleaned_transcript": redacted_cleaned, "segments": redacted_segments}
+            )
         return PipelineResult(
             result_json=result.model_dump(mode="json"),
             citations=[],
             provider_result=provider_result,
             quality_score=preservation,
             groundedness_score=preservation,
-            warnings=["suspicious_source_content"] if guarded_transcript.suspicious else [],
+            warnings=(["suspicious_source_content"] if guarded_transcript.suspicious else [])
+            + (["profanity_redacted"] if profanity_redacted else []),
             security_flags=suspicious_source_flags([request.source_id])
             if guarded_transcript.suspicious
             else [],

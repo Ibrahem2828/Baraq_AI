@@ -266,6 +266,25 @@ async def test_non_literal_modes_do_not_let_the_llm_override_stt_owned_fields(
 
 
 @pytest.mark.asyncio
+async def test_displayed_transcript_redacts_profanity_but_full_transcript_keeps_the_raw_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Same real words as RAW_TEXT plus one profane token appended -- keeps
+    # transcript_preservation_score comfortably above its 0.55 floor.
+    cleanup_result = SadaCleanupResult(cleaned_transcript=f"{RAW_TEXT} fuck", warnings=[])
+    result, _ = await _run(
+        cleanup_level="light", cleanup_result=cleanup_result, monkeypatch=monkeypatch
+    )
+    payload = SadaResult.model_validate(result.result_json)
+    assert "fuck" not in payload.cleaned_transcript
+    assert "[لفظ محجوب]" in payload.cleaned_transcript
+    # The internally-kept raw copy is untouched by the displayed-transcript
+    # redaction (blueprint 02_AI_PLATFORM.md §3.4's recommended Raw/Safe split).
+    assert payload.full_transcript == RAW_TEXT
+    assert "profanity_redacted" in result.warnings
+
+
+@pytest.mark.asyncio
 async def test_prompt_input_does_not_duplicate_segment_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

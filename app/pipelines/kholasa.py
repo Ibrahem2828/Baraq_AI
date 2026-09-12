@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from app.core.errors import ValidationFailure
+from app.core.profanity import redact_model_list, redact_model_text
 from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult
 from app.prompts.registry import get_prompt_registry
@@ -63,6 +64,19 @@ class KholasaPipeline(AIPipeline):
             output_model=KholasaResult,
         )
         result = KholasaResult.model_validate(provider_result.data)
+        # Blueprint 02_AI_PLATFORM.md §3.4: a summary never returns raw
+        # profanity to the user without educational necessity.
+        result, profanity_redacted = redact_model_text(
+            result,
+            text_fields=("title", "executive_summary", "detailed_summary"),
+            list_fields=("key_points", "review_questions", "limitations"),
+        )
+        flashcards, flashcards_redacted = redact_model_list(
+            result.flashcards, text_fields=("front", "back")
+        )
+        if flashcards_redacted:
+            result = result.model_copy(update={"flashcards": flashcards})
+            profanity_redacted = True
         evidence_texts = [citation.excerpt for citation in rag.citations]
         grounding_scores: list[float] = []
         for card in result.flashcards:
@@ -86,7 +100,8 @@ class KholasaPipeline(AIPipeline):
             provider_result=provider_result,
             quality_score=groundedness,
             groundedness_score=groundedness,
-            warnings=["suspicious_source_content"] if rag.suspicious_source_detected else [],
+            warnings=(["suspicious_source_content"] if rag.suspicious_source_detected else [])
+            + (["profanity_redacted"] if profanity_redacted else []),
             security_flags=suspicious_source_flags(request.source_ids)
             if rag.suspicious_source_detected
             else [],
