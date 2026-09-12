@@ -97,6 +97,29 @@ def test_v2_job_endpoint_rejects_extra_top_level_fields(client: TestClient) -> N
     assert response.json()["error"]["code"] == "invalid_contract"
 
 
+def test_job_endpoint_rejects_the_retired_unversioned_v1_contract(client: TestClient) -> None:
+    response = client.post(
+        "/api/ai/v1/jobs",
+        json={
+            "client_job_id": "legacy-client-job",
+            "user_id": "user-1",
+            "task_type": "fahes_generate_quiz",
+            "input": {"source_ids": ["source-1"]},
+            "model_tier": "balanced",
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_contract"
+
+
+def test_v2_job_endpoint_requires_project_scope(client: TestClient) -> None:
+    payload = valid_v2_payload()
+    del payload["project_id"]
+    response = client.post("/api/ai/v1/jobs", json=payload)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_contract"
+
+
 def test_v2_job_endpoint_rejects_task_specific_invalid_input_before_worker(
     client: TestClient,
 ) -> None:

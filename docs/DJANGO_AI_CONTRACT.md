@@ -23,9 +23,7 @@ Status: `CURRENT` for Phase 1. The generated [OpenAPI](openapi.json) is the sour
 
 This is verbatim Baraq_MD_Blueprint 01_BACKEND.md §5.2 / 02_AI_PLATFORM.md §5.2's documented
 payload; only these top-level fields are accepted. `client_job_id` and `trace_context.request_id`
-are UUIDs. `project_id` is required for any task that carries `source_ids` (a request without
-sources, e.g. `rasheed_recommendations`, may omit it, but Django's own serializer requires a
-project for every task type regardless). The top-level `source_ids`/`source_versions` mirror
+are UUIDs. `project_id` is required for every AI job. The top-level `source_ids`/`source_versions` mirror
 whatever the task-specific `input` already declares, for defense-in-depth logging/audit only --
 `source_versions` at the top level is **not** trusted as-is: the AI service independently
 re-fetches and re-verifies each source's manifest and content hash from Django rather than
@@ -48,7 +46,7 @@ Canonical task types are:
 - `rasheed_recommendations`
 - `sada_transcribe_audio`
 
-The response is `202` with the durable job identity and initial `queued` status. A V1 adapter still accepts the previous unversioned body temporarily; it is deprecated and must not be used by new Django code. V2 does not depend on `Idempotency-Key`: `user_id + client_job_id` is the idempotency boundary.
+The response is `202` with the durable job identity and initial `queued` status. The unversioned V1 body is retired and rejected with `422 invalid_contract`; Django must send V2 only. V2 does not depend on `Idempotency-Key`: `user_id + client_job_id` is the idempotency boundary.
 
 ## Idempotency
 

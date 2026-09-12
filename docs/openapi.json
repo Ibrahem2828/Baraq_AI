@@ -80,15 +80,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/DjangoJobCreateRequestV2"
-                  },
-                  {
-                    "$ref": "#/components/schemas/DjangoJobCreateRequest"
-                  }
-                ],
-                "title": "Payload"
+                "$ref": "#/components/schemas/DjangoJobCreateRequestV2"
               }
             }
           }
@@ -794,56 +786,6 @@
         "title": "DjangoFeedbackCreate",
         "description": "Django-authenticated feedback payload; Django supplies the authoritative user."
       },
-      "DjangoJobCreateRequest": {
-        "properties": {
-          "client_job_id": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Client Job Id"
-          },
-          "user_id": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "User Id"
-          },
-          "task_type": {
-            "$ref": "#/components/schemas/TaskType"
-          },
-          "input": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Input"
-          },
-          "model_tier": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "fast",
-                  "balanced",
-                  "high_quality"
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Tier"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "required": [
-          "client_job_id",
-          "user_id",
-          "task_type",
-          "input"
-        ],
-        "title": "DjangoJobCreateRequest",
-        "description": "Deprecated V1 compatibility adapter; V2 is the only primary contract."
-      },
       "DjangoJobCreateRequestV2": {
         "properties": {
           "contract_version": {
@@ -863,15 +805,9 @@
             "title": "User Id"
           },
           "project_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
             "title": "Project Id"
           },
           "task_type": {
@@ -909,6 +845,7 @@
           "contract_version",
           "client_job_id",
           "user_id",
+          "project_id",
           "task_type",
           "input",
           "model_policy",

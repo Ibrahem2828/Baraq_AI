@@ -17,7 +17,7 @@ class JobCreateRequest(StrictModel):
 
     client_job_id: str = Field(min_length=1, max_length=128)
     task_type: TaskType
-    project_id: str | None = None
+    project_id: str = Field(min_length=1, max_length=64)
     input: dict[str, Any]
     model_policy: ModelPolicy
     trace: TraceContext
@@ -51,7 +51,7 @@ class DjangoJobCreateRequestV2(StrictModel):
     contract_version: Literal["2.0"]
     client_job_id: uuid.UUID
     user_id: str = Field(min_length=1, max_length=64)
-    project_id: str | None = Field(default=None, max_length=64)
+    project_id: str = Field(min_length=1, max_length=64)
     task_type: TaskType
     source_ids: list[str] = Field(default_factory=list)
     source_versions: dict[str, str] = Field(default_factory=dict)

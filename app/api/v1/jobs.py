@@ -11,7 +11,6 @@ from app.models.ai_job import AIJob
 from app.models.enums import TaskType
 from app.schemas.common import APIEnvelope, Citation
 from app.schemas.jobs import (
-    DjangoJobCreateRequest,
     DjangoJobCreateRequestV2,
     JobAccepted,
     JobOutputView,
@@ -66,7 +65,7 @@ def to_job_view(job: AIJob) -> JobView:
 
 @router.post("", response_model=APIEnvelope[JobAccepted], status_code=status.HTTP_202_ACCEPTED)
 async def create_job(
-    payload: DjangoJobCreateRequestV2 | DjangoJobCreateRequest,
+    payload: DjangoJobCreateRequestV2,
     session: DbSession,
     _: DjangoService,
     redis: RedisClient,
@@ -85,11 +84,7 @@ async def create_job(
         # circuit-breaker safety nets that already gate every provider call;
         # a Redis outage must not take down job creation with it.
         logger.warning("ai_rate_limit_check_unavailable", user_id=payload.user_id)
-    request = (
-        payload.to_internal()
-        if isinstance(payload, DjangoJobCreateRequestV2)
-        else payload.to_internal(idempotency_key=idempotency_key)
-    )
+    request = payload.to_internal()
     # The contract trace is the canonical request identity across FastAPI,
     # persistence, Celery, provider attempts and the result webhook.
     http_request.state.request_id = str(request.trace.request_id)
