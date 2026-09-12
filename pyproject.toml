@@ -39,6 +39,11 @@ dependencies = [
   "sentry-sdk[fastapi]>=2.19,<3.0",
   "email-validator>=2.2,<3.0",
   "jinja2>=3.1,<4.0",
+  "pydub>=0.25,<1.0",
+  # Python 3.13 removed the stdlib `audioop` module pydub imports at load
+  # time (PEP 594); this backport keeps pydub importable there. A no-op on
+  # 3.12, which the Docker runtime image (python:3.12-slim) actually uses.
+  "audioop-lts>=0.2,<1.0; python_version>='3.13'",
 ]
 
 [project.optional-dependencies]
@@ -79,4 +84,8 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
  module = ["celery", "celery.*", "kombu", "kombu.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["pydub", "pydub.*"]
 ignore_missing_imports = true

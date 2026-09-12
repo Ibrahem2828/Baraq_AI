@@ -133,6 +133,19 @@ class Settings(BaseSettings):
     # envelope only, independent of whatever a reverse proxy in front of
     # this service may or may not enforce.
     max_request_body_bytes: int = 1 * 1024 * 1024
+    # Blueprint 02_AI_PLATFORM.md §8.2/§8.3: chunk a long recording into
+    # ~10-minute pieces cut near a silence boundary, with a small overlap so
+    # a word right at the cut isn't lost. Audio at or under
+    # sada_chunk_threshold_seconds is transcribed as a single call (today's
+    # existing, unchanged, well-tested path) -- chunking only kicks in once
+    # a recording is meaningfully longer than one target chunk.
+    sada_chunk_target_seconds: int = 600
+    sada_chunk_threshold_seconds: int = 900
+    sada_chunk_overlap_seconds: int = 5
+    sada_chunk_silence_search_window_seconds: int = 30
+    sada_chunk_min_silence_len_ms: int = 700
+    sada_chunk_silence_thresh_dbfs: int = -40
+    sada_max_concurrent_chunks: int = 3
     ai_requests_per_minute: int = 20
     job_retention_days: int = 180
     raw_content_retention_days: int = 30
