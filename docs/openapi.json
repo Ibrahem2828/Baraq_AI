@@ -259,10 +259,106 @@
           }
         }
       }
+    },
+    "/api/ai/v1/users/{user_id}/data": {
+      "delete": {
+        "tags": [
+          "Django Gateway Data Deletion"
+        ],
+        "summary": "Delete User Data",
+        "description": "Baraq_MD_Blueprint 02_AI_PLATFORM.md §12: on-demand deletion of a\nuser's (optionally one project's) AI jobs, outputs, ingested source\ncontent and cached results -- signed and callable only by Django, the\nsame trust boundary as job creation. `user_id` is part of the signed\ncanonical query string like the job GET/cancel endpoints, so it cannot\nbe spoofed independently of the HMAC signature.",
+        "operationId": "delete_user_data_api_ai_v1_users__user_id__data_delete",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIEnvelope_DataDeletionResult_"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "APIEnvelope_DataDeletionResult_": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success",
+            "default": true
+          },
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DataDeletionResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/APIError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "meta": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Meta"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "APIEnvelope[DataDeletionResult]"
+      },
       "APIEnvelope_FeedbackView_": {
         "properties": {
           "success": {
@@ -596,6 +692,30 @@
           "excerpt"
         ],
         "title": "Citation"
+      },
+      "DataDeletionResult": {
+        "properties": {
+          "jobs_deleted": {
+            "type": "integer",
+            "title": "Jobs Deleted"
+          },
+          "source_documents_deleted": {
+            "type": "integer",
+            "title": "Source Documents Deleted"
+          },
+          "cached_results_deleted": {
+            "type": "integer",
+            "title": "Cached Results Deleted"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "jobs_deleted",
+          "source_documents_deleted",
+          "cached_results_deleted"
+        ],
+        "title": "DataDeletionResult"
       },
       "DjangoFeedbackCreate": {
         "properties": {

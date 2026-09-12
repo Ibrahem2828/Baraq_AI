@@ -83,6 +83,23 @@ AI calls Django only through `BackendClient`. All calls use the same HMAC V2 pro
 
 No direct Django database access, credit handling, or materialization call is permitted from AI in this phase. Django may poll `GET /api/ai/v1/jobs/{client_job_id}?user_id={user_id}` and `POST /api/ai/v1/jobs/{client_job_id}/cancel?user_id={user_id}` using HMAC V2. `user_id` is required and must be the job owner: `backend_request_id` is unique only per `(user_id, backend_request_id)` (two tenants may legitimately reuse the same `client_job_id`), so both endpoints scope the lookup by `user_id` and return `404 job_not_found` for any other tenant's job, even one with a colliding id. `user_id` is part of the signed canonical query string, so Django cannot omit or spoof it without invalidating the HMAC signature.
 
+## On-demand data deletion
+
+Baraq_MD_Blueprint 02_AI_PLATFORM.md §12 requires the ability to delete a user's (or one
+project's) AI data on request, distinct from the automatic 180-day retention purge. Django (only)
+may call:
+
+```text
+DELETE /api/ai/v1/users/{user_id}/data?project_id={project_id}
+```
+
+`project_id` is optional; omitting it deletes every AI job, output, ingested source document/chunk
+and cached result for that user across all projects. Passing it scopes deletion to that project's
+jobs and source documents, but still clears the user's cached results entirely (a cache fingerprint
+carries no `project_id`, so a stale hit could otherwise resurface deleted material). Deletion is at
+the database level via each table's `ON DELETE CASCADE`, in one transaction. Response:
+`{"jobs_deleted": N, "source_documents_deleted": N, "cached_results_deleted": N}`.
+
 ## Stable error codes
 
 Integration code must use `error.code`, not English error text. Relevant codes are `invalid_contract`, `invalid_task_input`, `invalid_signature`, `expired_signature`, `replay_detected`, `unknown_key_id`, `idempotency_conflict`, `source_forbidden`, `source_not_found`, `job_not_found`, and `invalid_job_transition`.

@@ -5,6 +5,7 @@ import json
 from app.core.errors import ValidationFailure
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult
 from app.prompts.registry import get_prompt_registry
+from app.rag.grounding import validate_topic_references
 from app.schemas.rasheed import RasheedRequest, RasheedResult
 from app.services.knowledge_policy import KnowledgePolicy
 from app.services.routing_config import get_routing_config
@@ -49,6 +50,18 @@ class RasheedPipeline(AIPipeline):
             output_model=RasheedResult,
         )
         result = RasheedResult.model_validate(provider_result.data)
+        # Blueprint 02_AI_PLATFORM.md §11: every pipeline needs a
+        # grounding/source check, not just a schema check. Rasheed has no RAG
+        # excerpts to lexically match (ClaimEvidenceValidator doesn't apply),
+        # but related_topics is a closed set -- a recommendation citing a
+        # topic absent from the learner's own authoritative data is a
+        # fabricated reference, the same failure mode grounding checks exist
+        # to catch elsewhere.
+        known_topics = {item.topic.strip().casefold() for item in request.topic_performance}
+        for recommendation in result.recommendations:
+            validate_topic_references(
+                known_topics=known_topics, cited_topics=recommendation.related_topics
+            )
         data_strength = min(1.0, (len(authoritative_metrics) + len(request.topic_performance)) / 10)
         return PipelineResult(
             result_json=result.model_dump(mode="json"),

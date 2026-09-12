@@ -97,6 +97,24 @@ class ClaimEvidenceValidator:
         return result
 
 
+def validate_topic_references(*, known_topics: set[str], cited_topics: list[str]) -> None:
+    """Reject a reference to a topic absent from the caller's own
+    authoritative topic set -- a closed-set grounding check for pipelines
+    (Rasheed) whose claims aren't RAG excerpts ClaimEvidenceValidator can
+    lexically match against. A caller with no topic data at all (nothing to
+    ground against) passes `known_topics=set()`, which is a no-op here.
+    """
+    if not known_topics:
+        return
+    for topic in cited_topics:
+        if topic.strip().casefold() not in known_topics:
+            raise ValidationFailure(
+                "A recommendation references a topic absent from the "
+                "learner's authoritative topic data",
+                code="unsupported_topic_reference",
+            )
+
+
 def transcript_preservation_score(*, raw_transcript: str, cleaned_transcript: str) -> float:
     """Return token retention, rejecting cleanup that materially rewrites audio."""
     raw = _terms(raw_transcript)
