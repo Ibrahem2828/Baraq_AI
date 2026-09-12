@@ -70,10 +70,13 @@ def valid_v2_payload() -> dict[str, object]:
         "contract_version": "2.0",
         "client_job_id": "00000000-0000-0000-0000-000000000010",
         "user_id": "user-1",
+        "project_id": "project-1",
         "task_type": "fahes_generate_quiz",
+        "source_ids": ["source-1"],
+        "source_versions": {"source-1": "a" * 64},
         "input": {"source_ids": ["source-1"]},
         "model_policy": {"tier": "balanced", "allow_fallback": True},
-        "trace": {"request_id": "00000000-0000-0000-0000-000000000011"},
+        "trace_context": {"request_id": "00000000-0000-0000-0000-000000000011"},
     }
 
 

@@ -34,9 +34,16 @@ class SourceIngestionService:
         )
 
     async def ensure_ingested(
-        self, *, source_id: str, user_id: str, expected_content_sha256: str | None = None
+        self,
+        *,
+        source_id: str,
+        user_id: str,
+        project_id: str | None = None,
+        expected_content_sha256: str | None = None,
     ) -> SourceManifest:
-        manifest = await self.backend.get_source_manifest(source_id=source_id, user_id=user_id)
+        manifest = await self.backend.get_source_manifest(
+            source_id=source_id, user_id=user_id, project_id=project_id
+        )
         if expected_content_sha256 and manifest.content_sha256 != expected_content_sha256:
             raise ValidationFailure(
                 "Source changed after the job was accepted",
@@ -47,6 +54,12 @@ class SourceIngestionService:
             content_sha256=manifest.content_sha256,
         )
         if existing and existing.status == SourceStatus.READY:
+            if existing.project_id != project_id:
+                # A stale row from before project scoping was tracked (or a
+                # bug upstream) -- self-heal rather than silently serving it
+                # under whatever project asked first.
+                existing.project_id = project_id
+                await self.session.commit()
             return manifest
 
         if manifest.size_bytes > self.settings.max_source_file_bytes:
@@ -69,6 +82,7 @@ class SourceIngestionService:
         document = existing or await self.repository.create_document(
             backend_source_id=manifest.source_id,
             user_id=user_id,
+            project_id=project_id,
             title=manifest.title,
             mime_type=manifest.mime_type,
             content_sha256=manifest.content_sha256,

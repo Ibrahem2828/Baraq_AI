@@ -106,6 +106,7 @@ async def create_job(
         try:
             source_versions = await JobService.freeze_source_versions(
                 user_id=payload.user_id,
+                project_id=request.project_id,
                 task_type=request.task_type,
                 payload=normalized_input,
                 backend=backend,

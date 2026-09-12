@@ -55,7 +55,9 @@ class SadaPipeline(AIPipeline):
         settings = get_settings()
         request = SadaRequest.model_validate(context.job.request_payload)
         manifest = await context.backend.get_source_manifest(
-            source_id=request.source_id, user_id=context.job.user_id
+            source_id=request.source_id,
+            user_id=context.job.user_id,
+            project_id=context.job.project_id,
         )
         expected_hash = context.job.source_versions.get(request.source_id)
         if expected_hash != manifest.content_sha256:

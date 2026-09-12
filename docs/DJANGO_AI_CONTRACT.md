@@ -11,14 +11,34 @@ Status: `CURRENT` for Phase 1. The generated [OpenAPI](openapi.json) is the sour
   "contract_version": "2.0",
   "client_job_id": "3fca75f3-90d0-4e33-9c13-642644ec8e48",
   "user_id": "user-123",
+  "project_id": "42",
   "task_type": "fahes_generate_quiz",
+  "source_ids": ["source-123"],
+  "source_versions": {"source-123": "<sha256>"},
   "input": {"source_ids": ["source-123"]},
   "model_policy": {"tier": "balanced", "allow_fallback": true},
-  "trace": {"request_id": "32b8196d-0ec1-41c0-8f4f-b27dfa434f20"}
+  "trace_context": {"request_id": "32b8196d-0ec1-41c0-8f4f-b27dfa434f20"}
 }
 ```
 
-Only these top-level fields are accepted. `client_job_id` and `trace.request_id` are UUIDs. Task-specific data must be inside `input`; each task has a strict schema and invalid input returns `422` with code `invalid_task_input` before a job is stored or a worker is dispatched.
+This is verbatim Baraq_MD_Blueprint 01_BACKEND.md §5.2 / 02_AI_PLATFORM.md §5.2's documented
+payload; only these top-level fields are accepted. `client_job_id` and `trace_context.request_id`
+are UUIDs. `project_id` is required for any task that carries `source_ids` (a request without
+sources, e.g. `rasheed_recommendations`, may omit it, but Django's own serializer requires a
+project for every task type regardless). The top-level `source_ids`/`source_versions` mirror
+whatever the task-specific `input` already declares, for defense-in-depth logging/audit only --
+`source_versions` at the top level is **not** trusted as-is: the AI service independently
+re-fetches and re-verifies each source's manifest and content hash from Django rather than
+trusting a client-supplied hash. Task-specific data must be inside `input`; each task has a
+strict schema and invalid input returns `422` with code `invalid_task_input` before a job is
+stored or a worker is dispatched.
+
+**2026-09-12 correction**: this document and the AI service's own `DjangoJobCreateRequestV2`
+schema previously omitted `project_id`/`source_ids`/`source_versions` and expected the trace
+envelope under the key `trace`. Django's `build_service_payload()` already sent the blueprint's
+documented shape (`trace_context`, plus the three extra fields) -- since the schema used
+`extra="forbid"`, every job submission was rejected with `422`. Fixed by aligning the schema (and
+this document) to the blueprint-mandated wire shape, not by changing what Django sends.
 
 Canonical task types are:
 
@@ -53,9 +73,9 @@ GET /api/internal/v1/ai/sources/{source_id}/manifest/?user_id={user_id}
 GET /api/internal/v1/ai/sources/{source_id}/download/?user_id={user_id}
 ```
 
-The manifest must contain `source_id`, `owner_user_id`, `title`, `mime_type`, `size_bytes`, and `content_sha256`. It may additionally expose a short-lived `download_url` and expiry. AI rejects a manifest whose `owner_user_id` differs from the job user with `403 source_forbidden`, before download, embeddings, or a provider call. Downloads are streamed, byte-bounded by the manifest, and checksum-verified.
+The manifest must contain `source_id`, `owner_user_id`, `project_id`, `title`, `mime_type`, `size_bytes`, and `content_sha256`. It may additionally expose a short-lived `download_url` and expiry. AI rejects a manifest whose `owner_user_id` differs from the job user with `403 source_forbidden`, and one whose `project_id` differs from the job's own `project_id` with `403 source_project_mismatch`, before download, embeddings, or a provider call -- `user_id` alone is not a sufficient authorization scope (Baraq_MD_Blueprint 02_AI_PLATFORM.md §3.2). Downloads are streamed, byte-bounded by the manifest, and checksum-verified.
 
-`SadaPipeline` uses the same `get_source_manifest(source_id, user_id)` and `download_source(manifest, user_id)` interface as document ingestion; it does not trust a client filesystem path or filename for authorization.
+`SadaPipeline` uses the same `get_source_manifest(source_id, user_id, project_id)` and `download_source(manifest, user_id)` interface as document ingestion; it does not trust a client filesystem path or filename for authorization.
 
 ## AI → Django requests
 

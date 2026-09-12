@@ -17,6 +17,7 @@ from starlette.responses import Response
 from app.api.router import api_router
 from app.api.v1 import lab
 from app.application.standalone import BaraqAIApplication
+from app.core.body_limit import MaxRequestBodyMiddleware
 from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, get_logger
@@ -97,6 +98,11 @@ if settings.cors_origins:
             "X-Baraq-Signature",
         ],
     )
+# Added last so it becomes the outermost user-level layer (Starlette wraps
+# most-recently-added middleware around everything else) -- a request this
+# large is rejected before TrustedHost/CORS/routing/HMAC verification ever
+# touch it, not just before the route handler.
+app.add_middleware(MaxRequestBodyMiddleware, max_bytes=settings.max_request_body_bytes)
 
 
 @app.middleware("http")

@@ -130,12 +130,15 @@ class FakeGeneration:
 
 
 class FakeBackend:
-    async def get_source_manifest(self, *, source_id: str, user_id: str) -> Any:
+    async def get_source_manifest(
+        self, *, source_id: str, user_id: str, project_id: str | None = None
+    ) -> Any:
         from types import SimpleNamespace
 
         return SimpleNamespace(
             source_id=source_id,
             owner_user_id=user_id,
+            project_id=project_id,
             title="lecture.mp3",
             mime_type="audio/mpeg",
             size_bytes=4,
@@ -161,6 +164,7 @@ def _job(*, cleanup_level: str) -> AIJob:
     return AIJob(
         id=uuid4(),
         user_id="user-1",
+        project_id="project-1",
         request_id=str(uuid4()),
         task_type=TaskType.SADA_TRANSCRIBE_AUDIO,
         character=Character.SADA,

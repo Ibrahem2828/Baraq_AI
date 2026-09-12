@@ -11,6 +11,7 @@ from app.schemas.common import StrictModel
 class SourceManifest(StrictModel):
     source_id: str
     owner_user_id: str
+    project_id: str | None = None
     title: str
     mime_type: str
     size_bytes: int = Field(ge=0)
@@ -24,6 +25,7 @@ class SourceManifest(StrictModel):
 class CollectionManifest(StrictModel):
     collection_id: str
     owner_user_id: str
+    project_id: str | None = None
     title: str
     source_ids: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)

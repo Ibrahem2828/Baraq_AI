@@ -36,6 +36,7 @@ class RAGRetriever:
         self,
         *,
         user_id: str,
+        project_id: str | None,
         source_ids: list[str],
         source_versions: dict[str, str],
         query: str,
@@ -44,6 +45,7 @@ class RAGRetriever:
         query_vector = await self.embeddings.embed_query(query, routing_key)
         chunks = await self.repository.retrieve(
             user_id=user_id,
+            project_id=project_id,
             source_ids=source_ids,
             source_versions=source_versions,
             query_embedding=query_vector,

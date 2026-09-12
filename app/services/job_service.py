@@ -66,20 +66,37 @@ class JobService:
 
     @staticmethod
     async def freeze_source_versions(
-        *, user_id: str, task_type: TaskType, payload: dict[str, Any], backend: BackendClient
+        *,
+        user_id: str,
+        project_id: str | None,
+        task_type: TaskType,
+        payload: dict[str, Any],
+        backend: BackendClient,
     ) -> dict[str, str]:
         """Freeze the exact Django manifest versions authorised for this job.
 
         Source ownership is checked by Django before a durable job is written;
         the worker later rejects a changed manifest rather than silently using
-        newer material with an old request.
+        newer material with an old request. Also the first point a source's
+        project is checked against the job's own project_id (blueprint
+        02_AI_PLATFORM.md §3.2) -- before any durable job row is even created.
         """
         source_ids = [str(item) for item in payload.get("source_ids") or []]
         if task_type == TaskType.SADA_TRANSCRIBE_AUDIO:
             source_ids = [str(payload["source_id"])]
+        if source_ids and project_id is None:
+            # Blueprint 02_AI_PLATFORM.md §3.2: "every task that depends on
+            # sources carries a project_id" -- user_id + source_ids alone is
+            # not a sufficient authorization scope.
+            raise ValidationFailure(
+                "A project_id is required for a request that uses sources",
+                code="project_id_required",
+            )
         versions: dict[str, str] = {}
         for source_id in sorted(set(source_ids)):
-            manifest = await backend.get_source_manifest(source_id=source_id, user_id=user_id)
+            manifest = await backend.get_source_manifest(
+                source_id=source_id, user_id=user_id, project_id=project_id
+            )
             versions[source_id] = manifest.content_sha256
         return versions
 
@@ -114,6 +131,7 @@ class JobService:
                     source_ids = [str(payload["source_id"])]
                 job = AIJob(
                     user_id=user_id,
+                    project_id=request.project_id,
                     backend_request_id=request.client_job_id,
                     request_id=str(request.trace.request_id),
                     task_type=request.task_type,

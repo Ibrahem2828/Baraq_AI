@@ -126,6 +126,13 @@ class Settings(BaseSettings):
     max_audio_file_bytes: int = 200 * 1024 * 1024
     max_audio_seconds: int = 7200
     max_request_text_chars: int = 100000
+    # Blueprint 02_AI_PLATFORM.md §3.1 (Layer 0 Trust Gate): every inbound
+    # request body must be checked against a size limit before any AI
+    # processing -- source/audio *content* never travels this path (the
+    # service pulls that itself from Django), so this bounds the JSON job
+    # envelope only, independent of whatever a reverse proxy in front of
+    # this service may or may not enforce.
+    max_request_body_bytes: int = 1 * 1024 * 1024
     ai_requests_per_minute: int = 20
     job_retention_days: int = 180
     raw_content_retention_days: int = 30

@@ -26,10 +26,13 @@ Alembic head and returns 503 when unavailable.
   "contract_version": "2.0",
   "client_job_id": "00000000-0000-0000-0000-000000000010",
   "user_id": "user-123",
+  "project_id": "42",
   "task_type": "kholasa_generate_summary",
+  "source_ids": ["source-123"],
+  "source_versions": {"source-123": "<sha256>"},
   "input": {"source_ids": ["source-123"]},
   "model_policy": {"tier": "balanced", "allow_fallback": true},
-  "trace": {"request_id": "00000000-0000-0000-0000-000000000011"}
+  "trace_context": {"request_id": "00000000-0000-0000-0000-000000000011"}
 }
 ```
 

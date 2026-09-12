@@ -79,7 +79,9 @@ class BackendClient:
     def _with_user_id(path: str, user_id: str) -> str:
         return f"{path}?{urlencode({'user_id': user_id})}"
 
-    async def get_source_manifest(self, *, source_id: str, user_id: str) -> SourceManifest:
+    async def get_source_manifest(
+        self, *, source_id: str, user_id: str, project_id: str | None = None
+    ) -> SourceManifest:
         manifest = cast(
             SourceManifest,
             await self._request(
@@ -91,6 +93,15 @@ class BackendClient:
         if manifest.owner_user_id != user_id:
             raise AuthorizationError(
                 "The requested source does not belong to the job user", code="source_forbidden"
+            )
+        # Blueprint 02_AI_PLATFORM.md §3.2: user_id alone is not a sufficient
+        # filter -- a source must also belong to the project the job declared,
+        # not just to the same user, or a job in project A could read
+        # project B's material for that same user.
+        if project_id is not None and manifest.project_id != project_id:
+            raise AuthorizationError(
+                "The requested source does not belong to the job's project",
+                code="source_project_mismatch",
             )
         return manifest
 

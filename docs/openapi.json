@@ -742,8 +742,34 @@
             "minLength": 1,
             "title": "User Id"
           },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 64
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
           "task_type": {
             "$ref": "#/components/schemas/TaskType"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Ids"
+          },
+          "source_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Source Versions"
           },
           "input": {
             "additionalProperties": true,
@@ -753,7 +779,7 @@
           "model_policy": {
             "$ref": "#/components/schemas/ModelPolicy"
           },
-          "trace": {
+          "trace_context": {
             "$ref": "#/components/schemas/TraceContext"
           }
         },
@@ -766,10 +792,10 @@
           "task_type",
           "input",
           "model_policy",
-          "trace"
+          "trace_context"
         ],
         "title": "DjangoJobCreateRequestV2",
-        "description": "The strict, versioned Django -> AI job contract."
+        "description": "The strict, versioned Django -> AI job contract.\n\nWire shape is Baraq_MD_Blueprint/01_BACKEND.md §5.2 and\n02_AI_PLATFORM.md §5.2's documented payload, verbatim: project_id,\nsource_ids and source_versions travel at the top level, and the trace\nenvelope is keyed \"trace_context\" on the wire (kept as `.trace`\ninternally via the alias below, since that name is used pervasively\nthroughout this service)."
       },
       "FeedbackIssue": {
         "type": "string",

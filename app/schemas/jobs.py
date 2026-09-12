@@ -17,6 +17,7 @@ class JobCreateRequest(StrictModel):
 
     client_job_id: str = Field(min_length=1, max_length=128)
     task_type: TaskType
+    project_id: str | None = None
     input: dict[str, Any]
     model_policy: ModelPolicy
     trace: TraceContext
@@ -37,15 +38,26 @@ class TraceContext(StrictModel):
 
 
 class DjangoJobCreateRequestV2(StrictModel):
-    """The strict, versioned Django -> AI job contract."""
+    """The strict, versioned Django -> AI job contract.
+
+    Wire shape is Baraq_MD_Blueprint/01_BACKEND.md §5.2 and
+    02_AI_PLATFORM.md §5.2's documented payload, verbatim: project_id,
+    source_ids and source_versions travel at the top level, and the trace
+    envelope is keyed "trace_context" on the wire (kept as `.trace`
+    internally via the alias below, since that name is used pervasively
+    throughout this service).
+    """
 
     contract_version: Literal["2.0"]
     client_job_id: uuid.UUID
     user_id: str = Field(min_length=1, max_length=64)
+    project_id: str | None = Field(default=None, max_length=64)
     task_type: TaskType
+    source_ids: list[str] = Field(default_factory=list)
+    source_versions: dict[str, str] = Field(default_factory=dict)
     input: dict[str, Any]
     model_policy: ModelPolicy
-    trace: TraceContext
+    trace: TraceContext = Field(alias="trace_context")
 
     @field_validator("task_type", mode="before")
     @classmethod
@@ -59,6 +71,7 @@ class DjangoJobCreateRequestV2(StrictModel):
         return JobCreateRequest(
             client_job_id=str(self.client_job_id),
             task_type=self.task_type,
+            project_id=self.project_id,
             input=self.input,
             model_policy=self.model_policy,
             trace=self.trace,
@@ -91,6 +104,7 @@ class DjangoJobCreateRequest(StrictModel):
         return JobCreateRequest(
             client_job_id=self.client_job_id,
             task_type=self.task_type,
+            project_id=None,
             input=self.input,
             model_policy=ModelPolicy(tier=self.model_tier or "balanced", allow_fallback=True),
             trace=TraceContext(request_id=request_id),

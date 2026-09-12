@@ -29,6 +29,7 @@ class KhotaPipeline(AIPipeline):
                 await context.ingestion.ensure_ingested(
                     source_id=source_id,
                     user_id=context.job.user_id,
+                    project_id=context.job.project_id,
                     expected_content_sha256=context.job.source_versions.get(source_id),
                 )
             retriever = RAGRetriever(
@@ -37,6 +38,7 @@ class KhotaPipeline(AIPipeline):
             )
             rag = await retriever.retrieve(
                 user_id=context.job.user_id,
+                project_id=context.job.project_id,
                 source_ids=request.source_ids,
                 source_versions=context.job.source_versions,
                 query="الموضوعات والوحدات التي يجب توزيعها في خطة دراسية",

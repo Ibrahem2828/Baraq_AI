@@ -36,9 +36,15 @@ class AIJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (
         Index("ix_ai_jobs_user_created", "user_id", "created_at"),
         Index("ix_ai_jobs_task_status", "task_type", "status"),
+        Index("ix_ai_jobs_project_created", "project_id", "created_at"),
     )
 
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    # Blueprint 01_BACKEND.md §5.2 / 02_AI_PLATFORM.md §3.2: nullable because
+    # the deprecated V1 Django contract predates project scoping entirely;
+    # every V2 job carries one, since Django's own AIJobCreateSerializer now
+    # requires a project for every task type.
+    project_id: Mapped[str | None] = mapped_column(String(64))
     backend_request_id: Mapped[str | None] = mapped_column(String(128), index=True)
     request_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     task_type: Mapped[TaskType] = mapped_column(Enum(TaskType, name="ai_task_type"), nullable=False)
