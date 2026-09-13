@@ -1,0 +1,131 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: baraq_ai_ci
+          POSTGRES_USER: baraq_ai_ci
+          POSTGRES_PASSWORD: baraq_ai_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baraq_ai_ci -d baraq_ai_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      APP_ENV: test
+      DEBUG: 'false'
+      # CI never talks to a real provider -- mock boots and runs every
+      # pipeline with zero network calls and zero cost.
+      PROVIDER_MODE: mock
+      BARAQ_RUNTIME_MODE: service
+      ALLOWED_HOSTS: 'localhost,127.0.0.1'
+      DATABASE_URL: 'postgresql+asyncpg://baraq_ai_ci:baraq_ai_ci_password@localhost:5432/baraq_ai_ci'
+      DATABASE_SYNC_URL: 'postgresql+psycopg://baraq_ai_ci:baraq_ai_ci_password@localhost:5432/baraq_ai_ci'
+      REDIS_URL: 'redis://localhost:6379/0'
+      CELERY_BROKER_URL: 'redis://localhost:6379/1'
+      CELERY_RESULT_BACKEND: 'redis://localhost:6379/2'
+      BARAQ_BACKEND_BASE_URL: 'https://backend.ci.invalid'
+      BARAQ_SERVICE_ID: baraq-ai-service
+      BARAQ_DJANGO_SERVICE_ID: baraq-django
+      BARAQ_HMAC_CURRENT_KEY_ID: ci-key-1
+      BARAQ_HMAC_KEYS_JSON: '{"ci-key-1":"ci-only-hmac-secret-not-for-production-0123456789ab"}'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pyproject.toml
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Type check (mypy --strict)
+        run: mypy .
+
+      - name: Import the service exactly as .env.example configures it
+        # Regression gate for the ALLOWED_HOSTS/CORS_ORIGINS boot crash: any
+        # future change that breaks parsing a literal copy of .env.example
+        # fails here before it ever reaches a real deployment. Parsed in
+        # Python, not sourced as a shell script -- .env.example has unquoted
+        # multi-word values (e.g. APP_NAME=Baraq AI Service) that a bash
+        # `source` would mis-parse as a command invocation.
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          for line in Path(".env.example").read_text(encoding="utf-8").splitlines():
+              stripped = line.strip()
+              if not stripped or stripped.startswith("#") or "=" not in stripped:
+                  continue
+              key, _, value = stripped.partition("=")
+              os.environ[key.strip()] = value.strip()
+
+          from app.main import app  # noqa: F401
+          print("service imports cleanly")
+          PY
+
+      - name: Run database migrations end to end
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Run test suite
+        run: pytest -q
+
+      - name: Verify docs/openapi.json matches the live schema
+        env:
+          BARAQ_RUNTIME_MODE: service
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          from app.main import app
+
+          live = app.openapi()
+          documented = json.loads(Path("docs/openapi.json").read_text(encoding="utf-8"))
+          if live != documented:
+              print("docs/openapi.json is stale -- run: python scripts/export_openapi.py")
+              sys.exit(1)
+          print("docs/openapi.json matches the live schema")
+          PY
+
+      - name: Package and secret hygiene scan
+        run: python scripts/validate_package.py
+
+      - name: Django HMAC interop contract check
+        run: python scripts/validate_django_hmac_interop.py
