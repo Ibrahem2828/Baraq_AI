@@ -126,7 +126,9 @@ jobs:
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
             excs=$(grep -oE "^[A-Za-z_.]+(Error|Exception|Warning|Denied): .*" /tmp/migrate_output.log | sort -u | paste -sd ";" -)
-            echo "::error::Migration step failed, exit $exit_code. Exceptions: $excs"
+            files=$(grep -oE "alembic/versions/[A-Za-z0-9_.]+\.py\", line [0-9]+, in [a-z_]+" /tmp/migrate_output.log | sort -u | paste -sd ";" -)
+            sql=$(grep -B1 -A1 -iE "INSERT INTO|UPDATE |ALTER TABLE|ADD COLUMN" /tmp/migrate_output.log | tail -c 1200 | paste -sd "|" -)
+            echo "::error::Migration step failed, exit $exit_code. Exceptions: $excs || Files: $files || SQL context: $sql"
           fi
           exit $exit_code
 
