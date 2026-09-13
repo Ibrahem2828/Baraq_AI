@@ -132,6 +132,13 @@ class JobDispatchOutboxEvent(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         UUID(as_uuid=True), ForeignKey("ai_jobs.id", ondelete="CASCADE"), nullable=False, index=True
     )
     event_type: Mapped[str] = mapped_column(String(64), default="process_ai_job", nullable=False)
+    # Which Celery queue this event's ``process_ai_job`` dispatch is sent to
+    # (see ``app.models.enums.TASK_QUEUE``). Denormalized onto the event at
+    # creation time -- when the job's task_type is already in hand -- so the
+    # dispatcher never needs an extra DB round-trip to route it correctly.
+    # Irrelevant for the ``deliver_result_webhook`` event type, which always
+    # goes to ``ai_background`` regardless of this column.
+    target_queue: Mapped[str] = mapped_column(String(32), default="ai_interactive", nullable=False)
     request_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
     status: Mapped[DispatchOutboxStatus] = mapped_column(
         Enum(DispatchOutboxStatus, name="ai_dispatch_outbox_status"),

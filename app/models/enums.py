@@ -11,6 +11,21 @@ class TaskType(StrEnum):
     SADA_TRANSCRIBE_AUDIO = "sada_transcribe_audio"
 
 
+# Celery queue each task type's ``process_ai_job`` dispatch is routed to (see
+# ``app/workers/celery_app.py``'s ``task_routes`` and
+# ``JobDispatchOutboxEvent.target_queue``). Sada audio transcription is
+# genuinely heavier/slower than the other four (near-real-time) text tasks,
+# so it gets its own queue -- a burst of long transcriptions can no longer
+# delay an interactive fahes/khota/rasheed/kholasa job behind it.
+TASK_QUEUE: dict[TaskType, str] = {
+    TaskType.FAHES_GENERATE_QUIZ: "ai_interactive",
+    TaskType.KHOTA_GENERATE_PLAN: "ai_interactive",
+    TaskType.RASHEED_RECOMMENDATIONS: "ai_interactive",
+    TaskType.KHOLASA_GENERATE_SUMMARY: "ai_interactive",
+    TaskType.SADA_TRANSCRIBE_AUDIO: "ai_audio",
+}
+
+
 class Character(StrEnum):
     FAHES = "fahes"
     KHOTA = "khota"

@@ -12,7 +12,7 @@ from sqlalchemy.orm import selectinload
 from app.core.errors import ConflictError, NotFoundError, ValidationFailure
 from app.core.idempotency import build_idempotency_scope, stable_hash
 from app.models.ai_job import AIJob, JobDispatchOutboxEvent
-from app.models.enums import Character, JobStatus, TaskType
+from app.models.enums import TASK_QUEUE, Character, JobStatus, TaskType
 from app.schemas.fahes import FahesRequest
 from app.schemas.jobs import JobCreateRequest
 from app.schemas.kholasa import KholasaRequest
@@ -154,6 +154,7 @@ class JobService:
                         job_id=job.id,
                         event_type="process_ai_job",
                         request_id=str(request.trace.request_id),
+                        target_queue=TASK_QUEUE[request.task_type],
                     )
                 )
             await self.session.refresh(job)

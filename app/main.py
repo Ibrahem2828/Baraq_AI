@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import ORJSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sentry_sdk.integrations.fastapi import FastApiIntegration
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -174,6 +175,22 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> ORJSONRes
             ),
         ).model_dump(mode="json"),
     )
+
+
+if settings.prometheus_enabled:
+    # Bare top-level path (Prometheus's own scrape-config convention), not
+    # under `public_api_prefix` -- this is not part of the Django-gateway
+    # API contract (see tests/contract/test_django_gateway_contract.py).
+    #
+    # Safe to leave unauthenticated: this service is never bound to the
+    # public gateway at all -- `ai-api` sits only on the private Docker
+    # network (see root compose.yaml / Caddyfile), which has no route for
+    # any `ai.*` host. A Prometheus server must live on that same private
+    # network to scrape this; nothing external can ever reach this path.
+    # If that network topology ever changes, this must move behind auth.
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics() -> Response:
+        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 if settings.baraq_runtime_mode == "lab":

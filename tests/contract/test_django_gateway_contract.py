@@ -24,7 +24,15 @@ def test_django_gateway_routes_are_the_only_operational_job_routes() -> None:
     assert 'router = APIRouter(prefix="/feedback", tags=["Django Gateway Feedback"])' in feedback
     assert "include_router(characters.router)" not in router
     assert "include_router(admin.router)" not in router
-    assert '@app.get("/metrics"' not in main
+    # /metrics (Prometheus scrape endpoint, added for internal observability)
+    # must stay a bare top-level route -- never mounted under the
+    # Django-gateway's own public_api_prefix, and never wrapped with
+    # DjangoService/HMAC auth (it isn't part of that contract at all). Its
+    # safety instead comes from the AI service never being bound to the
+    # public gateway (see Caddyfile/root compose.yaml -- no `ai.*` route
+    # exists there); that boundary, not this test, is what must hold.
+    assert '@app.get("/metrics"' in main
+    assert '"/metrics"' not in router  # never part of the versioned api_router aggregation
 
 
 def test_gateway_job_routes_require_django_service_signature() -> None:
