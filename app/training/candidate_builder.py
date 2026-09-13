@@ -20,12 +20,18 @@ def build_candidate(
         key: input_report.get(key, 0) + expected_report.get(key, 0)
         for key in set(input_report) | set(expected_report)
     }
+    proven_anonymous = report.get("unverified_free_text", 0) == 0
     return TrainingDatasetCandidate(
         output_id=output.id,
         feedback_id=feedback.id,
         task_type=job.task_type.value,
         input_json=input_data,
         expected_output_json=expected_data,
-        anonymized=True,
+        anonymized=proven_anonymous,
         pii_report=report,
+        review_notes=(
+            None
+            if proven_anonymous
+            else "Human privacy review required for unverified free text"
+        ),
     )
