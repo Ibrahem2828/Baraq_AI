@@ -13,6 +13,13 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # 0001_initial derives its schema from *current* ORM metadata
+    # (Base.metadata.create_all), so a genuinely fresh database already has
+    # this constraint under its final name before this migration ever runs.
+    # Postgres raises that as duplicate_table (42P07, the constraint's
+    # implicit backing index), not duplicate_object (42710) -- catch both,
+    # or a from-scratch `alembic upgrade head` fails on a database that
+    # never had the old name to begin with.
     op.execute("ALTER TABLE ai_source_documents DROP CONSTRAINT IF EXISTS uq_source_version")
     op.execute(
         """
@@ -20,7 +27,7 @@ def upgrade() -> None:
             ALTER TABLE ai_source_documents
                 ADD CONSTRAINT uq_source_scope_version
                 UNIQUE (user_id, project_id, backend_source_id, content_sha256);
-        EXCEPTION WHEN duplicate_object THEN NULL;
+        EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
         END $$;
         """
     )
@@ -34,7 +41,7 @@ def downgrade() -> None:
             ALTER TABLE ai_source_documents
                 ADD CONSTRAINT uq_source_version
                 UNIQUE (backend_source_id, content_sha256);
-        EXCEPTION WHEN duplicate_object THEN NULL;
+        EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL;
         END $$;
         """
     )
