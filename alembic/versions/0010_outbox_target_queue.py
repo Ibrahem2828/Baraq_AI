@@ -1,12 +1,12 @@
 """Add target_queue to the job-dispatch outbox for per-task-type Celery routing.
 
-Revision ID: 0010_dispatch_outbox_target_queue
+Revision ID: 0010_outbox_target_queue
 Revises: 0009_result_cache_project_scope
 """
 
 from alembic import op
 
-revision = "0010_dispatch_outbox_target_queue"
+revision = "0010_outbox_target_queue"
 down_revision = "0009_result_cache_project_scope"
 branch_labels = None
 depends_on = None
