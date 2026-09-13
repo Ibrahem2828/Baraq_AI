@@ -1,3 +1,5 @@
+> **Superseded** — see [`PRODUCTION_RELEASE_STATUS.md`](../PRODUCTION_RELEASE_STATUS.md) at the repo root for the current, verified production status (2026-09-13). Kept below for historical record only.
+
 # تقرير إغلاق Phase 1 — 2026-08-19
 
 ## 1. النتيجة التنفيذية

@@ -1,3 +1,5 @@
+> **Superseded** — see [`PRODUCTION_RELEASE_STATUS.md`](../PRODUCTION_RELEASE_STATUS.md) at the repo root for the current, verified production status (2026-09-13). Kept below for historical record only.
+
 # Phase 1 production core report
 
 > **SUPERSEDED — 2026-08-19.** The final Phase 1 result and current runtime evidence are in [PHASE_1_CLOSURE_REPORT.md](PHASE_1_CLOSURE_REPORT.md). This file is retained as the pre-Django-V2 checkpoint.
