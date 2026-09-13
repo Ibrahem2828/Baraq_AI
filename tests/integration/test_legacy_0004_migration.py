@@ -30,9 +30,8 @@ def _postgres_url() -> URL:
 
 
 def _psycopg_url(database_url: URL | str) -> str:
-    return make_url(str(database_url)).set(drivername="postgresql").render_as_string(
-        hide_password=False
-    )
+    parsed = database_url if isinstance(database_url, URL) else make_url(database_url)
+    return parsed.set(drivername="postgresql").render_as_string(hide_password=False)
 
 
 @pytest.fixture
