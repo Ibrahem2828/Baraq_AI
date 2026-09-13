@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ValidationFailure
 from app.models.ai_job import AIJob
 from app.providers.base import ProviderResult
 from app.schemas.common import Citation
@@ -41,3 +42,10 @@ class AIPipeline(ABC):
 
     @abstractmethod
     async def execute(self, context: PipelineContext) -> PipelineResult: ...
+
+
+def require_project_id(job: AIJob) -> str:
+    """Reject historic/unscoped rows before any source or provider work."""
+    if not job.project_id:
+        raise ValidationFailure("Project scope is required", code="project_id_required")
+    return job.project_id

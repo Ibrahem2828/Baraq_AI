@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     celery_result_backend: str = "redis://localhost:6379/2"
 
     baraq_backend_base_url: str = "https://api.barraq.xn--mgbaab0cxheq.tech"
+    # Production normally requires HTTPS.  A deployment may opt in to an
+    # HTTP callback only for the private Docker service hostname below.
+    # This keeps public/internet HTTP impossible while allowing the AI
+    # worker to reach Django without traversing Caddy.
+    baraq_backend_allow_insecure_http: bool = False
     # Django is the only public-facing identity and authorization authority.
     # JWT/JWKS settings were removed from the AI production request path in Phase 1.
     baraq_service_id: str = "baraq-ai-service"
@@ -149,6 +154,9 @@ class Settings(BaseSettings):
     ai_requests_per_minute: int = 20
     job_retention_days: int = 180
     raw_content_retention_days: int = 30
+    training_candidate_retention_days: int = 365
+    job_stale_after_seconds: int = 900
+    job_max_recoveries: int = 2
     training_consent_required: bool = True
 
     sentry_dsn: str | None = None
@@ -218,8 +226,17 @@ class Settings(BaseSettings):
             raise ValueError("BARAQ_HMAC_KEYS_JSON must contain non-placeholder production keys")
         if not self.openai_primary_api_key.get_secret_value():
             raise ValueError("OPENAI_PRIMARY_API_KEY is required in production")
-        if not self.baraq_backend_base_url.startswith("https://"):
-            raise ValueError("BARAQ_BACKEND_BASE_URL must use HTTPS in production")
+        parsed_backend_url = urlparse(self.baraq_backend_base_url)
+        allows_private_backend_http = (
+            self.baraq_backend_allow_insecure_http
+            and parsed_backend_url.scheme == "http"
+            and parsed_backend_url.hostname == "backend"
+        )
+        if parsed_backend_url.scheme != "https" and not allows_private_backend_http:
+            raise ValueError(
+                "BARAQ_BACKEND_BASE_URL must use HTTPS in production unless it is the "
+                "explicitly enabled private Docker backend service"
+            )
         if "*" in self.allowed_hosts or not self.allowed_hosts:
             raise ValueError("ALLOWED_HOSTS must contain explicit production hosts")
         parsed_database_url = urlparse(self.database_url)

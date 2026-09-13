@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Enum, Float, Integer, String
+from sqlalchemy import DateTime, Enum, Float, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,9 +22,11 @@ class CachedAIResult(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     paying for another provider call."""
 
     __tablename__ = "ai_cached_results"
+    __table_args__ = (Index("ix_cached_result_scope", "user_id", "project_id"),)
 
     fingerprint: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
+    project_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     task_type: Mapped[TaskType] = mapped_column(Enum(TaskType, name="ai_task_type"), nullable=False)
     result_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list, nullable=False)

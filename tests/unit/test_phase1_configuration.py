@@ -25,6 +25,29 @@ def test_production_configuration_accepts_non_placeholder_keyring() -> None:
     production_settings().validate_production()
 
 
+def test_production_configuration_allows_http_only_for_the_explicit_private_backend() -> None:
+    production_settings(
+        baraq_backend_base_url="http://backend:8000",
+        baraq_backend_allow_insecure_http=True,
+    ).validate_production()
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://api.baraqapp.com",
+        "http://backend.example.test",
+        "ftp://backend",
+    ],
+)
+def test_production_configuration_rejects_non_private_http_backend(base_url: str) -> None:
+    with pytest.raises(ValueError):
+        production_settings(
+            baraq_backend_base_url=base_url,
+            baraq_backend_allow_insecure_http=True,
+        ).validate_production()
+
+
 @pytest.mark.parametrize(
     "overrides",
     [

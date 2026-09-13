@@ -34,6 +34,7 @@ def _jsonb_as_json_on_sqlite(element: object, compiler: object, **kw: object) ->
 def _fingerprint(**overrides: object) -> str:
     base = {
         "user_id": "user-1",
+        "project_id": "project-1",
         "task_type": "fahes_generate_quiz",
         "input_hash": "a" * 64,
         "source_versions": {"source-1": "b" * 64},
@@ -71,6 +72,7 @@ def test_fingerprint_is_deterministic() -> None:
     "overrides",
     [
         {"user_id": "user-2"},
+        {"project_id": "project-2"},
         {"task_type": "kholasa_generate_summary"},
         {"input_hash": "z" * 64},
         {"source_versions": {"source-1": "different-content-hash"}},
@@ -116,7 +118,12 @@ async def cache_service(
 async def test_lookup_returns_none_for_an_unknown_fingerprint(
     cache_service: ResultCacheService,
 ) -> None:
-    assert await cache_service.lookup("no-such-fingerprint") is None
+    assert (
+        await cache_service.lookup(
+            "no-such-fingerprint", user_id="user-1", project_id="project-1"
+        )
+        is None
+    )
 
 
 @pytest.mark.asyncio
@@ -128,10 +135,13 @@ async def test_store_then_lookup_round_trips_the_result(
     await cache_service.store(
         fingerprint=fingerprint,
         user_id="user-1",
+        project_id="project-1",
         task_type=TaskType.FAHES_GENERATE_QUIZ,
         result=result,
     )
-    cached = await cache_service.lookup(fingerprint)
+    cached = await cache_service.lookup(
+        fingerprint, user_id="user-1", project_id="project-1"
+    )
     assert cached is not None
     assert cached.result_json == {"quiz": "content"}
     assert cached.source_model_name == "gpt-5-mini"
@@ -143,6 +153,27 @@ async def test_store_then_lookup_round_trips_the_result(
 
 
 @pytest.mark.asyncio
+async def test_lookup_rejects_same_fingerprint_from_another_project(
+    cache_service: ResultCacheService,
+) -> None:
+    fingerprint = _fingerprint()
+    await cache_service.store(
+        fingerprint=fingerprint,
+        user_id="user-1",
+        project_id="project-1",
+        task_type=TaskType.FAHES_GENERATE_QUIZ,
+        result=_result(),
+    )
+
+    assert (
+        await cache_service.lookup(
+            fingerprint, user_id="user-1", project_id="project-2"
+        )
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_lookup_bumps_hit_count_and_last_hit_at(
     cache_service: ResultCacheService,
 ) -> None:
@@ -150,16 +181,21 @@ async def test_lookup_bumps_hit_count_and_last_hit_at(
     await cache_service.store(
         fingerprint=fingerprint,
         user_id="user-1",
+        project_id="project-1",
         task_type=TaskType.FAHES_GENERATE_QUIZ,
         result=_result(),
     )
-    first_hit = await cache_service.lookup(fingerprint)
+    first_hit = await cache_service.lookup(
+        fingerprint, user_id="user-1", project_id="project-1"
+    )
     assert first_hit is not None
     # Same session identity-maps the row to the same Python object, so
     # capture hit_count immediately -- it's mutated in place by the next
     # lookup() call, not a fresh snapshot.
     first_hit_count = first_hit.hit_count
-    second_hit = await cache_service.lookup(fingerprint)
+    second_hit = await cache_service.lookup(
+        fingerprint, user_id="user-1", project_id="project-1"
+    )
     assert second_hit is not None
     assert first_hit_count == 1
     assert second_hit.hit_count == 2
@@ -178,15 +214,19 @@ async def test_store_does_not_raise_on_a_duplicate_fingerprint(
     await cache_service.store(
         fingerprint=fingerprint,
         user_id="user-1",
+        project_id="project-1",
         task_type=TaskType.FAHES_GENERATE_QUIZ,
         result=_result(cost=0.05),
     )
     await cache_service.store(
         fingerprint=fingerprint,
         user_id="user-1",
+        project_id="project-1",
         task_type=TaskType.FAHES_GENERATE_QUIZ,
         result=_result(cost=0.99),  # a different result -- must be ignored
     )
-    cached = await cache_service.lookup(fingerprint)
+    cached = await cache_service.lookup(
+        fingerprint, user_id="user-1", project_id="project-1"
+    )
     assert cached is not None
     assert cached.source_estimated_cost_usd == 0.05  # the first write wins

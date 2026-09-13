@@ -12,8 +12,6 @@ self-heal on next access (ensure_ingested) or simply age out (ai_jobs).
 
 from __future__ import annotations
 
-import sqlalchemy as sa
-
 from alembic import op
 
 revision = "0007_project_scoping"

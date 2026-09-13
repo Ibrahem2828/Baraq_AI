@@ -18,18 +18,22 @@ settings = get_settings()
 class SourceDocument(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __tablename__ = "ai_source_documents"
     __table_args__ = (
-        UniqueConstraint("backend_source_id", "content_sha256", name="uq_source_version"),
+        UniqueConstraint(
+            "user_id",
+            "project_id",
+            "backend_source_id",
+            "content_sha256",
+            name="uq_source_scope_version",
+        ),
         Index("ix_source_user_backend", "user_id", "backend_source_id"),
         Index("ix_source_project", "project_id"),
     )
 
     backend_source_id: Mapped[str] = mapped_column(String(128), index=True)
     user_id: Mapped[str] = mapped_column(String(64), index=True)
-    # Blueprint 02_AI_PLATFORM.md §3.2: retrieval must be scoped by project,
-    # not just user -- nullable only because rows ingested before this
-    # column existed may not have it backfilled; ensure_ingested() self-heals
-    # it on next access. New rows always populate it (job.project_id is
-    # required by Django's own AIJobCreateSerializer for every task type).
+    # New rows are project-scoped. Nullable is retained temporarily only for
+    # historic rows created before migration 0007; those rows are never
+    # reassigned to a different scope in place.
     project_id: Mapped[str | None] = mapped_column(String(64))
     title: Mapped[str] = mapped_column(String(500))
     mime_type: Mapped[str] = mapped_column(String(150))

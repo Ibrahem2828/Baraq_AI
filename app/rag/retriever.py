@@ -36,7 +36,7 @@ class RAGRetriever:
         self,
         *,
         user_id: str,
-        project_id: str | None,
+        project_id: str,
         source_ids: list[str],
         source_versions: dict[str, str],
         query: str,

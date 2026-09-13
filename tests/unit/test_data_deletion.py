@@ -66,10 +66,13 @@ def _document(*, user_id: str, project_id: str | None, backend_source_id: str) -
     )
 
 
-def _cached_result(*, user_id: str, fingerprint: str) -> CachedAIResult:
+def _cached_result(
+    *, user_id: str, project_id: str, fingerprint: str
+) -> CachedAIResult:
     return CachedAIResult(
         fingerprint=fingerprint,
         user_id=user_id,
+        project_id=project_id,
         task_type=TaskType.FAHES_GENERATE_QUIZ,
         result_json={"quiz": "content"},
         source_model_name="gpt-5-mini",
@@ -122,14 +125,19 @@ async def test_delete_user_data_scoped_to_one_project_leaves_other_projects_inta
 
 
 @pytest.mark.asyncio
-async def test_delete_user_data_always_clears_cached_results_regardless_of_project(
+async def test_delete_project_data_clears_only_that_projects_cached_results(
     session: AsyncSession,
 ) -> None:
-    # CachedAIResult carries no project_id (the fingerprint already encodes
-    # the full request content) -- a project-scoped deletion request must
-    # still clear it, or a stale cache hit could resurface deleted material
-    # under the same fingerprint.
-    session.add(_cached_result(user_id="user-a", fingerprint="f" * 64))
+    session.add_all(
+        [
+            _cached_result(
+                user_id="user-a", project_id="project-1", fingerprint="f" * 64
+            ),
+            _cached_result(
+                user_id="user-a", project_id="project-2", fingerprint="e" * 64
+            ),
+        ]
+    )
     await session.commit()
 
     report = await DataDeletionService(session).delete_user_data(
@@ -137,3 +145,5 @@ async def test_delete_user_data_always_clears_cached_results_regardless_of_proje
     )
 
     assert report.cached_results_deleted == 1
+    remaining = (await session.execute(CachedAIResult.__table__.select())).fetchall()
+    assert [row.project_id for row in remaining] == ["project-2"]

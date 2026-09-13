@@ -5,7 +5,7 @@ import json
 from app.core.errors import ValidationFailure
 from app.core.profanity import redact_model_list, redact_model_text
 from app.core.security_flags import suspicious_source_flags
-from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult
+from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult, require_project_id
 from app.prompts.registry import get_prompt_registry
 from app.rag.grounding import ClaimEvidenceValidator
 from app.rag.retriever import RAGRetriever
@@ -20,11 +20,12 @@ class FahesPipeline(AIPipeline):
 
     async def execute(self, context: PipelineContext) -> PipelineResult:
         request = FahesRequest.model_validate(context.job.request_payload)
+        project_id = require_project_id(context.job)
         for source_id in request.source_ids:
             await context.ingestion.ensure_ingested(
                 source_id=source_id,
                 user_id=context.job.user_id,
-                project_id=context.job.project_id,
+                project_id=project_id,
                 expected_content_sha256=context.job.source_versions.get(source_id),
             )
 
@@ -35,7 +36,7 @@ class FahesPipeline(AIPipeline):
         )
         rag = await retriever.retrieve(
             user_id=context.job.user_id,
-            project_id=context.job.project_id,
+            project_id=project_id,
             source_ids=request.source_ids,
             source_versions=context.job.source_versions,
             query=query,

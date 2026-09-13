@@ -38,7 +38,7 @@ class SourceIngestionService:
         *,
         source_id: str,
         user_id: str,
-        project_id: str | None = None,
+        project_id: str,
         expected_content_sha256: str | None = None,
     ) -> SourceManifest:
         manifest = await self.backend.get_source_manifest(
@@ -50,16 +50,12 @@ class SourceIngestionService:
                 code="source_version_changed",
             )
         existing = await self.repository.get_document_version(
+            user_id=user_id,
+            project_id=project_id,
             backend_source_id=manifest.source_id,
             content_sha256=manifest.content_sha256,
         )
         if existing and existing.status == SourceStatus.READY:
-            if existing.project_id != project_id:
-                # A stale row from before project scoping was tracked (or a
-                # bug upstream) -- self-heal rather than silently serving it
-                # under whatever project asked first.
-                existing.project_id = project_id
-                await self.session.commit()
             return manifest
 
         if manifest.size_bytes > self.settings.max_source_file_bytes:

@@ -16,7 +16,7 @@ from app.core.telemetry import AI_LATENCY, AI_REQUESTS
 from app.db.session import AsyncSessionLocal
 from app.models.ai_job import AIJob, AIOutput, JobDispatchOutboxEvent
 from app.models.enums import JobStatus
-from app.pipelines.base import PipelineContext, PipelineResult
+from app.pipelines.base import PipelineContext, PipelineResult, require_project_id
 from app.pipelines.registry import get_pipeline
 from app.prompts.registry import get_prompt_registry
 from app.providers.base import ProviderResult, ProviderUsage
@@ -25,6 +25,7 @@ from app.rag.embeddings import EmbeddingService
 from app.schemas.common import Citation
 from app.services.backend_client import BackendClient
 from app.services.generation import StructuredGenerationService
+from app.services.job_recovery import ensure_result_delivery
 from app.services.job_state_machine import TERMINAL_JOB_STATES, JobStateMachine
 from app.services.result_cache import ResultCacheService, cache_hit_metadata, compute_fingerprint
 from app.services.routing_config import get_routing_config
@@ -119,6 +120,7 @@ async def process_job(job_id: str) -> None:
             if job.status != JobStatus.QUEUED:
                 # Only one worker may atomically claim queued work.
                 return
+            project_id = require_project_id(job)
             await _transition(
                 session, job, status=JobStatus.PREPARING, message="Preparing job for processing"
             )
@@ -149,6 +151,7 @@ async def process_job(job_id: str) -> None:
                     job.prompt_checksum = prompt.checksum
                     fingerprint = compute_fingerprint(
                         user_id=job.user_id,
+                        project_id=project_id,
                         task_type=job.task_type.value,
                         input_hash=job.input_hash,
                         source_versions=job.source_versions,
@@ -156,7 +159,13 @@ async def process_job(job_id: str) -> None:
                         pipeline_version=pipeline.version,
                     )
             cache = ResultCacheService(session)
-            cached = await cache.lookup(fingerprint) if fingerprint else None
+            cached = (
+                await cache.lookup(
+                    fingerprint, user_id=job.user_id, project_id=project_id
+                )
+                if fingerprint
+                else None
+            )
 
             await _transition(
                 session,
@@ -251,6 +260,7 @@ async def process_job(job_id: str) -> None:
                 await cache.store(
                     fingerprint=fingerprint,
                     user_id=job.user_id,
+                    project_id=project_id,
                     task_type=job.task_type,
                     result=result,
                 )
@@ -265,6 +275,7 @@ async def process_job(job_id: str) -> None:
                 job.error_code = exc.code if isinstance(exc, AppError) else exc.__class__.__name__
                 job.error_message = str(exc)[:4000]
                 job.completed_at = datetime.now(UTC)
+                await ensure_result_delivery(session, job)
                 await session.commit()
                 AI_REQUESTS.labels(job.task_type.value, "failed").inc()
         raise

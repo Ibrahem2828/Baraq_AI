@@ -24,6 +24,7 @@ async def export_dataset_jsonl(
                 select(TrainingDatasetCandidate).where(
                     TrainingDatasetCandidate.task_type == task_type,
                     TrainingDatasetCandidate.status == CandidateStatus.APPROVED,
+                    TrainingDatasetCandidate.anonymized.is_(True),
                 )
             )
         ).all()

@@ -41,6 +41,7 @@ CACHEABLE_TASK_TYPES = frozenset(
 def compute_fingerprint(
     *,
     user_id: str,
+    project_id: str,
     task_type: str,
     input_hash: str,
     source_versions: dict[str, str],
@@ -58,6 +59,7 @@ def compute_fingerprint(
     canonical = json.dumps(
         {
             "user_id": user_id,
+            "project_id": project_id,
             "task_type": task_type,
             "input_hash": input_hash,
             "source_versions": source_versions,
@@ -76,9 +78,15 @@ class ResultCacheService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def lookup(self, fingerprint: str) -> CachedAIResult | None:
+    async def lookup(
+        self, fingerprint: str, *, user_id: str, project_id: str
+    ) -> CachedAIResult | None:
         cached = await self.session.scalar(
-            select(CachedAIResult).where(CachedAIResult.fingerprint == fingerprint)
+            select(CachedAIResult).where(
+                CachedAIResult.fingerprint == fingerprint,
+                CachedAIResult.user_id == user_id,
+                CachedAIResult.project_id == project_id,
+            )
         )
         if cached is None:
             return None
@@ -92,6 +100,7 @@ class ResultCacheService:
         *,
         fingerprint: str,
         user_id: str,
+        project_id: str,
         task_type: TaskType,
         result: PipelineResult,
     ) -> None:
@@ -108,6 +117,7 @@ class ResultCacheService:
                     CachedAIResult(
                         fingerprint=fingerprint,
                         user_id=user_id,
+                        project_id=project_id,
                         task_type=task_type,
                         result_json=result.result_json,
                         citations=[item.model_dump(mode="json") for item in result.citations],

@@ -30,9 +30,11 @@ class SourceRepository:
         self.session = session
 
     async def get_document_version(
-        self, *, backend_source_id: str, content_sha256: str
+        self, *, user_id: str, project_id: str, backend_source_id: str, content_sha256: str
     ) -> SourceDocument | None:
         stmt = select(SourceDocument).where(
+            SourceDocument.user_id == user_id,
+            SourceDocument.project_id == project_id,
             SourceDocument.backend_source_id == backend_source_id,
             SourceDocument.content_sha256 == content_sha256,
         )
@@ -61,7 +63,7 @@ class SourceRepository:
         self,
         *,
         user_id: str,
-        project_id: str | None,
+        project_id: str,
         source_ids: list[str],
         source_versions: dict[str, str],
         query_embedding: list[float],
@@ -74,16 +76,13 @@ class SourceRepository:
             .join(SourceDocument, SourceChunk.document_id == SourceDocument.id)
             .where(
                 SourceDocument.user_id == user_id,
+                SourceDocument.project_id == project_id,
                 SourceDocument.backend_source_id.in_(source_ids),
                 SourceChunk.embedding.is_not(None),
             )
             .order_by(distance)
             .limit(limit)
         )
-        if project_id is not None:
-            # Blueprint 02_AI_PLATFORM.md §3.2/§5.2: user_id + source_ids
-            # alone is not a sufficient authorization scope for retrieval.
-            stmt = stmt.where(SourceDocument.project_id == project_id)
         if source_versions:
             # Source identifiers alone are not a stable authorization scope:
             # each job must retrieve only the file hash captured at creation.

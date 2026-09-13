@@ -47,14 +47,10 @@ class DataDeletionService:
                 document_stmt = document_stmt.where(SourceDocument.project_id == project_id)
             documents_result = await self.session.execute(document_stmt)
 
-            # Cached results carry no project_id (the fingerprint is already
-            # per-request-content), so a project-scoped request still clears
-            # every cached result for the user -- a stale project-scoped
-            # cache hit must never resurface deleted material under the same
-            # fingerprint.
-            cache_result = await self.session.execute(
-                delete(CachedAIResult).where(CachedAIResult.user_id == user_id)
-            )
+            cache_stmt = delete(CachedAIResult).where(CachedAIResult.user_id == user_id)
+            if project_id is not None:
+                cache_stmt = cache_stmt.where(CachedAIResult.project_id == project_id)
+            cache_result = await self.session.execute(cache_stmt)
         return DeletionReport(
             jobs_deleted=cast("CursorResult[Any]", jobs_result).rowcount or 0,
             source_documents_deleted=cast("CursorResult[Any]", documents_result).rowcount or 0,
