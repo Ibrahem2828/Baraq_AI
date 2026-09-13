@@ -56,6 +56,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The HMAC interop check (last step below) imports the real Django
+      # backend's own security module to prove both services' signers/
+      # verifiers agree byte-for-byte -- it needs that sibling repo checked
+      # out at the exact relative path scripts/validate_django_hmac_interop.py
+      # expects (../Baraaq_back/backend, matching local dev layout). A plain
+      # `git clone` (not actions/checkout, which only places repos *inside*
+      # the current workspace) puts it at the true sibling path instead.
+      - name: Checkout Django backend (sibling repo, HMAC interop check only)
+        run: |
+          mkdir -p "$(dirname "$GITHUB_WORKSPACE")/Baraaq_back"
+          git clone --depth 1 https://github.com/Ibrahem2828/Barraq_Back2.git "$(dirname "$GITHUB_WORKSPACE")/Baraaq_back/backend"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -66,6 +78,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+          # Only base.txt -- config.settings must import cleanly for the HMAC
+          # interop check, but production-only extras (gunicorn, boto3, ...)
+          # are irrelevant to that and would only slow the job down.
+          pip install -r "$(dirname "$GITHUB_WORKSPACE")/Baraaq_back/backend/requirements/base.txt"
 
       - name: Lint (ruff)
         run: ruff check .
@@ -158,4 +174,19 @@ jobs:
         run: python scripts/validate_package.py
 
       - name: Django HMAC interop contract check
-        run: python scripts/validate_django_hmac_interop.py
+        run: |
+          set +e
+          python scripts/validate_django_hmac_interop.py 2>&1 | tee /tmp/hmac_interop_output.log
+          exit_code=${PIPESTATUS[0]}
+          if [ "$exit_code" -ne 0 ]; then
+            {
+              echo "### HMAC interop check failed (exit $exit_code) -- full output below"
+              echo '```'
+              cat /tmp/hmac_interop_output.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            excs=$(grep -oE "^[A-Za-z_.]+(Error|Exception|Warning|Denied): .*" /tmp/hmac_interop_output.log | sort -u | paste -sd ";" -)
+            tail_msg=$(tail -c 1200 /tmp/hmac_interop_output.log | paste -sd "|" -)
+            echo "::error::HMAC interop check failed, exit $exit_code. Exceptions: $excs || Tail: $tail_msg"
+          fi
+          exit $exit_code
