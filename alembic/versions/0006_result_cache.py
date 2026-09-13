@@ -53,7 +53,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.String(length=64), nullable=False),
         sa.Column(
             "task_type",
-            sa.Enum(name="ai_task_type", create_type=False),
+            postgresql.ENUM(name="ai_task_type", create_type=False),
             nullable=False,
         ),
         sa.Column("result_json", postgresql.JSONB(), nullable=False),
@@ -73,7 +73,7 @@ def upgrade() -> None:
         sa.Column("source_model_name", sa.String(length=100), nullable=False),
         sa.Column(
             "source_provider_account",
-            sa.Enum(name="ai_provider_account", create_type=False),
+            postgresql.ENUM(name="ai_provider_account", create_type=False),
             nullable=False,
         ),
         sa.Column(
