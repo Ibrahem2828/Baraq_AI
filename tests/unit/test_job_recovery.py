@@ -89,8 +89,8 @@ async def test_stale_preparing_job_requeues_existing_dispatch_event() -> None:
     )
     session = _RecoverySession([job], event)
 
-    assert await recover_stale_jobs(  # type: ignore[arg-type]
-        session, stale_after_seconds=60, max_recoveries=2
+    assert await recover_stale_jobs(
+        session, stale_after_seconds=60, max_recoveries=2  # type: ignore[arg-type]
     ) == (1, 0)
     assert job.status == JobStatus.QUEUED
     assert job.retry_count == 1
@@ -130,8 +130,8 @@ async def test_stale_uncertain_job_fails_and_enqueues_delivery(status: JobStatus
     job = _job(status)
     session = _RecoverySession([job])
 
-    assert await recover_stale_jobs(  # type: ignore[arg-type]
-        session, stale_after_seconds=60, max_recoveries=2
+    assert await recover_stale_jobs(
+        session, stale_after_seconds=60, max_recoveries=2  # type: ignore[arg-type]
     ) == (0, 1)
     assert job.status == JobStatus.FAILED
     assert job.error_code == "worker_interrupted_execution_uncertain"

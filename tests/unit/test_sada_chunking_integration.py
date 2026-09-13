@@ -207,7 +207,7 @@ async def sqlite_attempt_session_factory(
 ) -> AsyncIterator[async_sessionmaker[Any]]:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'attempts.db'}")
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all, tables=[ProviderAttempt.__table__])
+        await conn.run_sync(Base.metadata.create_all, tables=[ProviderAttempt.__table__])  # type: ignore[list-item]
     yield async_sessionmaker(engine, expire_on_commit=False)
     await engine.dispose()
 

@@ -69,7 +69,7 @@ async def budget_service(
         conn.exec_driver_sql("BEGIN IMMEDIATE")  # type: ignore[attr-defined]
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all, tables=[ProviderUsageMonth.__table__])
+        await conn.run_sync(Base.metadata.create_all, tables=[ProviderUsageMonth.__table__])  # type: ignore[list-item]
     factory = async_sessionmaker(engine, expire_on_commit=False)
     # provider_budget.py does `from app.db.session import AsyncSessionLocal`,
     # binding the name into its own module -- patch it there, not at the

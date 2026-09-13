@@ -32,7 +32,7 @@ def _jsonb_as_json_on_sqlite(element: object, compiler: object, **kw: object) ->
 
 
 def _fingerprint(**overrides: object) -> str:
-    base = {
+    base: dict[str, object] = {
         "user_id": "user-1",
         "project_id": "project-1",
         "task_type": "fahes_generate_quiz",
@@ -102,7 +102,7 @@ async def cache_service(
 ) -> AsyncIterator[ResultCacheService]:
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'result_cache.db'}")
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all, tables=[CachedAIResult.__table__])
+        await conn.run_sync(Base.metadata.create_all, tables=[CachedAIResult.__table__])  # type: ignore[list-item]
     factory = async_sessionmaker(engine, expire_on_commit=False)
     # ResultCacheService.store() does `from app.db.session import
     # AsyncSessionLocal`, binding the name into its own module -- patch it

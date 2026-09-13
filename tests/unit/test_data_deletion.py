@@ -33,7 +33,7 @@ async def session(tmp_path: Path) -> AsyncIterator[AsyncSession]:
     async with engine.begin() as conn:
         await conn.run_sync(
             Base.metadata.create_all,
-            tables=[AIJob.__table__, SourceDocument.__table__, CachedAIResult.__table__],
+            tables=[AIJob.__table__, SourceDocument.__table__, CachedAIResult.__table__],  # type: ignore[list-item]
         )
     factory = async_sessionmaker(engine, expire_on_commit=False)
     async with factory() as db_session:

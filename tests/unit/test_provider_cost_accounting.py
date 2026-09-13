@@ -45,7 +45,7 @@ async def test_openai_transcribe_computes_real_audio_cost_not_zero() -> None:
         duration=30.0,
         id="resp-1",
     )
-    provider.client.audio.transcriptions.create = AsyncMock(return_value=fake_response)
+    provider.client.audio.transcriptions.create = AsyncMock(return_value=fake_response)  # type: ignore[method-assign]
     result = await provider.transcribe(
         model="gpt-4o-mini-transcribe",
         filename="lecture.mp3",
@@ -74,7 +74,7 @@ async def test_openai_transcribe_bills_by_token_usage_when_the_api_reports_it() 
         duration=30.0,
         id="resp-1",
     )
-    provider.client.audio.transcriptions.create = AsyncMock(return_value=fake_response)
+    provider.client.audio.transcriptions.create = AsyncMock(return_value=fake_response)  # type: ignore[method-assign]
     result = await provider.transcribe(
         model="gpt-4o-mini-transcribe",
         filename="lecture.mp3",
@@ -98,7 +98,7 @@ async def test_openai_transcribe_falls_back_to_segment_end_when_duration_missing
         usage=SimpleNamespace(input_tokens=0, output_tokens=0, total_tokens=0),
         id="resp-2",
     )
-    provider.client.audio.transcriptions.create = AsyncMock(return_value=fake_response)
+    provider.client.audio.transcriptions.create = AsyncMock(return_value=fake_response)  # type: ignore[method-assign]
     result = await provider.transcribe(
         model="gpt-4o-mini-transcribe",
         filename="lecture.mp3",
@@ -118,7 +118,7 @@ async def test_openai_embed_computes_real_cost_from_usage_tokens() -> None:
         data=[SimpleNamespace(embedding=[0.1, 0.2]), SimpleNamespace(embedding=[0.3, 0.4])],
         usage=SimpleNamespace(total_tokens=1_000_000),
     )
-    provider.client.embeddings.create = AsyncMock(return_value=fake_response)
+    provider.client.embeddings.create = AsyncMock(return_value=fake_response)  # type: ignore[method-assign]
     result = await provider.embed(model="text-embedding-3-small", texts=["a", "b"])
     assert len(result.vectors) == 2
     # 1,000,000 tokens * 0.02 USD/million (config/pricing.yaml) = 0.02.
@@ -143,7 +143,7 @@ async def test_gemini_embed_estimates_a_nonzero_cost_from_input_length() -> None
     fake_response = SimpleNamespace(
         embeddings=[SimpleNamespace(values=[0.1, 0.2]), SimpleNamespace(values=[0.3, 0.4])]
     )
-    provider._client.aio.models.embed_content = AsyncMock(return_value=fake_response)
+    provider._client.aio.models.embed_content = AsyncMock(return_value=fake_response)  # type: ignore[method-assign]
     result = await provider.embed(model="gemini-embedding-001", texts=["a" * 400, "b" * 400])
     assert len(result.vectors) == 2
     assert result.usage.input_tokens > 0
@@ -161,7 +161,7 @@ async def test_gemini_embed_uses_exact_usage_when_the_sdk_reports_it() -> None:
         embeddings=[SimpleNamespace(values=[0.1, 0.2]), SimpleNamespace(values=[0.3, 0.4])],
         usage_metadata=SimpleNamespace(prompt_token_count=7),
     )
-    provider._client.aio.models.embed_content = AsyncMock(return_value=fake_response)
+    provider._client.aio.models.embed_content = AsyncMock(return_value=fake_response)  # type: ignore[method-assign]
     result = await provider.embed(model="gemini-embedding-001", texts=["a" * 400, "b" * 400])
     assert result.usage.input_tokens == 7
     assert result.estimated_cost_usd == get_cost_calculator().embedding_cost(

@@ -40,7 +40,7 @@ async def test_freeze_source_versions_rejects_a_sourced_request_with_no_project(
             project_id=None,
             task_type=TaskType.FAHES_GENERATE_QUIZ,
             payload={"source_ids": ["source-1"]},
-            backend=_FakeBackend(),
+            backend=_FakeBackend(),  # type: ignore[arg-type]
         )
     assert error.value.code == "project_id_required"
 
@@ -53,7 +53,7 @@ async def test_freeze_source_versions_allows_no_project_when_there_are_no_source
         project_id=None,
         task_type=TaskType.RASHEED_RECOMMENDATIONS,
         payload={},
-        backend=_FakeBackend(),
+        backend=_FakeBackend(),  # type: ignore[arg-type]
     )
     assert versions == {}
 
@@ -66,7 +66,7 @@ async def test_freeze_source_versions_passes_project_id_through_to_the_backend()
         project_id="project-1",
         task_type=TaskType.FAHES_GENERATE_QUIZ,
         payload={"source_ids": ["source-1"]},
-        backend=backend,
+        backend=backend,  # type: ignore[arg-type]
     )
     assert versions == {"source-1": "a" * 64}
     assert backend.calls == [

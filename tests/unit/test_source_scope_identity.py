@@ -58,7 +58,8 @@ async def test_document_identity_lookup_contains_user_and_project_scope() -> Non
 
     sql = str(
         session.statement.compile(
-            dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+            dialect=postgresql.dialect(),  # type: ignore[no-untyped-call]
+            compile_kwargs={"literal_binds": True},
         )
     )
     assert "ai_source_documents.user_id = 'user-a'" in sql
