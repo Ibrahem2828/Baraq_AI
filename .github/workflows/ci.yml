@@ -98,9 +98,37 @@ jobs:
 
       - name: Run database migrations end to end
         run: |
-          alembic upgrade head
-          alembic downgrade base
-          alembic upgrade head
+          set +e
+          {
+            echo "=== alembic upgrade head ==="
+            alembic upgrade head
+          } 2>&1 | tee /tmp/migrate_output.log
+          exit_code=${PIPESTATUS[0]}
+          if [ "$exit_code" -eq 0 ]; then
+            {
+              echo "=== alembic downgrade base ==="
+              alembic downgrade base
+            } 2>&1 | tee -a /tmp/migrate_output.log
+            exit_code=${PIPESTATUS[0]}
+          fi
+          if [ "$exit_code" -eq 0 ]; then
+            {
+              echo "=== alembic upgrade head (again) ==="
+              alembic upgrade head
+            } 2>&1 | tee -a /tmp/migrate_output.log
+            exit_code=${PIPESTATUS[0]}
+          fi
+          if [ "$exit_code" -ne 0 ]; then
+            {
+              echo "### Migration step failed (exit $exit_code) -- full output below"
+              echo '```'
+              cat /tmp/migrate_output.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            excs=$(grep -oE "^[A-Za-z_.]+(Error|Exception|Warning|Denied): .*" /tmp/migrate_output.log | sort -u | paste -sd ";" -)
+            echo "::error::Migration step failed, exit $exit_code. Exceptions: $excs"
+          fi
+          exit $exit_code
 
       - name: Run test suite
         run: pytest -q
