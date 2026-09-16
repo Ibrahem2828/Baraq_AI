@@ -22,6 +22,8 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_track_started=True,
     broker_connection_retry_on_startup=True,
+    task_soft_time_limit=settings.celery_task_soft_time_limit_seconds,
+    task_time_limit=settings.celery_task_time_limit_seconds,
     # `process_ai_job`'s static route below is only the fallback used if it's
     # ever sent without an explicit queue kwarg -- in practice every real
     # dispatch goes through `app.workers.tasks._enqueue_outbox_event`, which

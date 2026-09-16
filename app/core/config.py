@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     baraq_service_hmac_secret: SecretStr = SecretStr("")
     baraq_callback_timeout_seconds: int = 15
     baraq_http_timeout_seconds: int = 30
+    # No Celery `task_time_limit`/`task_soft_time_limit` was previously
+    # configured, so a hung task (blocked provider call, stuck I/O) could
+    # occupy a worker slot indefinitely. `job_stale_after_seconds` below
+    # already treats a job as stuck at 900s at the business layer, so the
+    # hard limit mirrors that threshold and the soft limit gives the task a
+    # window to raise/cleanup before the hard kill.
+    celery_task_soft_time_limit_seconds: int = Field(default=600, ge=1, le=3600)
+    celery_task_time_limit_seconds: int = Field(default=900, ge=1, le=3600)
     outbox_dispatch_batch_size: int = Field(default=20, ge=1, le=200)
     outbox_lock_timeout_seconds: int = Field(default=120, ge=10, le=3600)
     outbox_retry_max_seconds: int = Field(default=300, ge=1, le=3600)
