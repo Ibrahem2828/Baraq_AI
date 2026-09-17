@@ -1,7 +1,7 @@
 """Run the seed eval datasets and write a report (spec section 25/28).
 
 Usage:
-    python scripts/run_evals.py [--provider-mode mock|replay|live]
+    python scripts/run_evals.py [--provider-mode mock|replay|live] [--report-path PATH]
 
 Exits non-zero if any case fails, so CI can gate on it. This is the
 "regression eval on every prompt/model/routing change" hook from spec
@@ -36,7 +36,7 @@ def _load_cases(character: str) -> list[dict[str, Any]]:
     return cases
 
 
-async def main(provider_mode: str) -> int:
+async def main(provider_mode: str, report_path: Path | None = None) -> int:
     characters = ["fahes", "kholasa", "khota", "rasheed"]
     all_results: list[dict[str, Any]] = []
     for character in characters:
@@ -56,8 +56,8 @@ async def main(provider_mode: str) -> int:
         "failed": total - passed,
         "results": all_results,
     }
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    report_path = REPORTS_DIR / f"seed-eval-{provider_mode}.json"
+    report_path = report_path or REPORTS_DIR / f"seed-eval-{provider_mode}.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n{passed}/{total} passed. Report: {report_path}")
     return 0 if passed == total else 1
@@ -66,5 +66,10 @@ async def main(provider_mode: str) -> int:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--provider-mode", default="mock", choices=["mock", "replay", "live"])
+    parser.add_argument(
+        "--report-path",
+        type=Path,
+        help="Optional output file. Defaults to evals/reports/seed-eval-<mode>.json.",
+    )
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(main(args.provider_mode)))
+    raise SystemExit(asyncio.run(main(args.provider_mode, args.report_path)))

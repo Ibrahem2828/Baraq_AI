@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -28,7 +29,10 @@ class PromptSpec:
             key: value if isinstance(value, str) else yaml.safe_dump(value, allow_unicode=True)
             for key, value in values.items()
         }
-        return Template(self.user_template).safe_substitute(safe_values)
+        # Missing prompt inputs are programming/configuration errors.  Leaving
+        # an unresolved ``$variable`` in a production model request is both a
+        # quality problem and an easy way to weaken grounding guarantees.
+        return Template(self.user_template).substitute(safe_values)
 
 
 class PromptRegistry:
@@ -45,11 +49,20 @@ class PromptRegistry:
             missing = required - set(raw)
             if missing:
                 raise ValueError(f"Prompt {path.name} is missing fields: {sorted(missing)}")
+            name = str(raw["name"]).strip()
+            version = str(raw["version"]).strip()
+            task_type = str(raw["task_type"]).strip()
+            if not name or not task_type:
+                raise ValueError(f"Prompt {path.name} has an empty name or task_type")
+            if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+                raise ValueError(f"Prompt {path.name} has an invalid semantic version: {version}")
+            if name in prompts:
+                raise ValueError(f"Duplicate prompt name '{name}' in {path.name}")
             canonical = path.read_bytes()
             spec = PromptSpec(
-                name=str(raw["name"]),
-                version=str(raw["version"]),
-                task_type=str(raw["task_type"]),
+                name=name,
+                version=version,
+                task_type=task_type,
                 system_prompt=str(raw["system_prompt"]).strip(),
                 user_template=str(raw["user_template"]).strip(),
                 metadata=dict(raw.get("metadata") or {}),

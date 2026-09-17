@@ -33,6 +33,16 @@ def test_claim_evidence_validator_calculates_non_cosmetic_score() -> None:
     assert 0 < result.score <= 1
 
 
+def test_claim_evidence_validator_ignores_arabic_punctuation() -> None:
+    result = ClaimEvidenceValidator.validate(
+        claim="النقطة الثانية مهمة",
+        source_references=[1],
+        evidence_texts=["النقطة الثانية، مهمة؟"],
+    )
+
+    assert result.score == 1.0
+
+
 def test_sada_preservation_is_measured_from_transcript_tokens() -> None:
     score = transcript_preservation_score(
         raw_transcript="قانون نيوتن الثاني يشرح القوة والتسارع",

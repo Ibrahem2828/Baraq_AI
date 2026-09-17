@@ -7,7 +7,11 @@ from dataclasses import dataclass
 
 from app.core.errors import ValidationFailure
 
-_TOKEN = re.compile(r"[\w\u0600-\u06ff]+", re.UNICODE)
+# ``\w`` is Unicode-aware in Python and already includes Arabic letters and
+# digits.  Adding the whole Arabic Unicode block also included punctuation
+# such as ``،`` and ``؟``, making otherwise identical words compare as
+# different tokens whenever Arabic punctuation followed one of them.
+_TOKEN = re.compile(r"\w+", re.UNICODE)
 _STOP_WORDS = frozenset(
     {
         "the",
