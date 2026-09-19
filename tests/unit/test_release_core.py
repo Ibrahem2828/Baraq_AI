@@ -103,6 +103,27 @@ def test_result_webhook_has_stable_event_and_trace_identifiers() -> None:
         ("source_version_changed", "The source changed after this job was created.", False),
         ("provider_timeout", "The AI provider timed out.", True),
         ("provider_rate_limited", "The AI provider is temporarily rate limited.", True),
+        (
+            "insufficient_source_context",
+            "The selected sources do not contain enough relevant material.",
+            False,
+        ),
+        (
+            "missing_authoritative_data",
+            "There is not enough learner performance data for this analysis.",
+            False,
+        ),
+        (
+            "khota_constraint_violation",
+            "The requested study-plan constraints cannot be satisfied.",
+            False,
+        ),
+        (
+            "empty_transcription",
+            "No speech could be transcribed from this audio source.",
+            False,
+        ),
+        ("transcription_failed", "The audio could not be transcribed.", True),
     ],
 )
 def test_failed_webhook_preserves_safe_domain_error(
