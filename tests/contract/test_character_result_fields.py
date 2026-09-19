@@ -14,6 +14,7 @@ not persisted.
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from app.schemas.fahes import FahesResult
 from app.schemas.kholasa import KholasaResult
@@ -36,7 +37,14 @@ CHARACTER_RESULT_FIELDS: dict[str, set[str]] = {
         "review_questions",
         "title",
     },
-    "khota": {"adaptation_rules", "assumptions", "citations", "plan_days", "strategy_summary", "title"},
+    "khota": {
+        "adaptation_rules",
+        "assumptions",
+        "citations",
+        "plan_days",
+        "strategy_summary",
+        "title",
+    },
     "rasheed": {
         "confidence_note",
         "next_best_action",
@@ -57,7 +65,7 @@ CHARACTER_RESULT_FIELDS: dict[str, set[str]] = {
     },
 }
 
-_MODELS = {
+_MODELS: dict[str, type[BaseModel]] = {
     "fahes": FahesResult,
     "kholasa": KholasaResult,
     "khota": KhotaResult,
