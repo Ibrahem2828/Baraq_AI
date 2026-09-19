@@ -7,9 +7,12 @@ from typing import cast
 import pytest
 
 from app.models.ai_job import AIJob, AIOutput, JobDispatchOutboxEvent
-from app.models.enums import ProviderAccount
+from app.models.enums import JobStatus, ProviderAccount
 from app.rag.grounding import ClaimEvidenceValidator, transcript_preservation_score
-from app.services.webhook_delivery import build_result_webhook_payload
+from app.services.webhook_delivery import (
+    build_result_webhook_payload,
+    build_terminal_webhook_payload,
+)
 
 # Provider-candidate/router-selection coverage now lives in
 # tests/unit/test_provider_router.py against the real ProviderCandidate shape.
@@ -87,3 +90,66 @@ def test_result_webhook_has_stable_event_and_trace_identifiers() -> None:
     assert payload["metadata"]["request_id"] == job.request_id
     assert payload["metadata"]["usage"]["estimated_cost_usd"] == 0.001
     assert payload["metadata"]["prompt"]["version"] == "1.1.0"
+
+
+@pytest.mark.parametrize(
+    ("code", "message", "retryable"),
+    [
+        (
+            "pdf_ocr_required",
+            "This PDF does not contain extractable text and requires OCR.",
+            False,
+        ),
+        ("source_version_changed", "The source changed after this job was created.", False),
+        ("provider_timeout", "The AI provider timed out.", True),
+        ("provider_rate_limited", "The AI provider is temporarily rate limited.", True),
+    ],
+)
+def test_failed_webhook_preserves_safe_domain_error(
+    code: str, message: str, retryable: bool
+) -> None:
+    event = SimpleNamespace(id=uuid.UUID("00000000-0000-0000-0000-000000000020"))
+    job = SimpleNamespace(
+        id=uuid.UUID("00000000-0000-0000-0000-000000000010"),
+        backend_request_id="backend-job-1",
+        status=JobStatus.FAILED,
+        error_code=code,
+        error_message="secret provider response with source content",
+    )
+
+    payload = build_terminal_webhook_payload(
+        event=cast(JobDispatchOutboxEvent, event),
+        job=cast(AIJob, job),
+    )
+
+    assert payload == {
+        "event_id": "00000000-0000-0000-0000-000000000020",
+        "event_type": "ai.job.failed",
+        "job_id": "backend-job-1",
+        "status": "failed",
+        "error_code": code,
+        "error_message": message,
+        "retryable": retryable,
+    }
+    assert "secret provider response" not in str(payload)
+
+
+def test_unknown_failure_code_uses_safe_generic_message() -> None:
+    event = SimpleNamespace(id=uuid.uuid4())
+    job = SimpleNamespace(
+        id=uuid.uuid4(),
+        backend_request_id="backend-job-2",
+        status=JobStatus.FAILED,
+        error_code="RuntimeError",
+        error_message="postgresql://user:password@private-db/source-text",
+    )
+
+    payload = build_terminal_webhook_payload(
+        event=cast(JobDispatchOutboxEvent, event),
+        job=cast(AIJob, job),
+    )
+
+    assert payload["error_code"] == "RuntimeError"
+    assert payload["error_message"] == "The AI request could not be completed."
+    assert payload["retryable"] is False
+    assert "private-db" not in str(payload)

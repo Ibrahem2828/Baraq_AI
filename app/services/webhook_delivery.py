@@ -20,6 +20,75 @@ RESULT_WEBHOOK_EVENT = "deliver_result_webhook"
 logger = get_logger(__name__)
 
 
+# Only stable, actionable text crosses the service boundary. The original
+# exception remains in the private AI database/logs for operators, while
+# Django and the browser receive a message that cannot contain provider
+# payloads, source text, internal URLs, or credentials.
+_PUBLIC_FAILURE_MESSAGES = {
+    "pdf_ocr_required": "This PDF does not contain extractable text and requires OCR.",
+    "unsupported_source_format": "This source format is not supported.",
+    "source_version_changed": "The source changed after this job was created.",
+    "source_checksum_mismatch": "The downloaded source did not match the requested version.",
+    "source_download_failed": "The source could not be downloaded.",
+    "source_ingestion_failed": "The source could not be prepared for AI use.",
+    "embedding_failed": "The source could not be indexed.",
+    "retrieval_failed": "Relevant source material could not be retrieved.",
+    "provider_timeout": "The AI provider timed out.",
+    "provider_rate_limited": "The AI provider is temporarily rate limited.",
+    "provider_unavailable": "The AI provider is temporarily unavailable.",
+    "result_validation_failed": "The generated result did not pass validation.",
+    "output_validation_failed": "The generated result did not pass validation.",
+    "worker_interrupted_execution_uncertain": "The job stopped safely after a worker interruption.",
+}
+
+_RETRYABLE_FAILURE_CODES = frozenset(
+    {
+        "source_download_failed",
+        "source_ingestion_failed",
+        "embedding_failed",
+        "retrieval_failed",
+        "provider_timeout",
+        "provider_rate_limited",
+        "provider_unavailable",
+    }
+)
+
+
+def public_failure_message(code: str | None) -> str:
+    return _PUBLIC_FAILURE_MESSAGES.get(
+        str(code or ""), "The AI request could not be completed."
+    )
+
+
+def build_terminal_webhook_payload(
+    *, event: JobDispatchOutboxEvent, job: AIJob
+) -> dict[str, Any]:
+    """Build the callback for any terminal job without leaking diagnostics."""
+    if job.status == JobStatus.COMPLETED:
+        if job.output is None:
+            raise ValueError("Completed result webhook requires a completed job output")
+        return build_result_webhook_payload(event=event, job=job, output=job.output)
+    if job.status == JobStatus.FAILED:
+        code = str(job.error_code or "provider_unavailable")[:100]
+        return {
+            "event_id": str(event.id),
+            "event_type": "ai.job.failed",
+            "job_id": job.backend_request_id or str(job.id),
+            "status": JobStatus.FAILED.value,
+            "error_code": code,
+            "error_message": public_failure_message(code),
+            "retryable": code in _RETRYABLE_FAILURE_CODES,
+        }
+    if job.status == JobStatus.CANCELED:
+        return {
+            "event_id": str(event.id),
+            "event_type": "ai.job.canceled",
+            "job_id": job.backend_request_id or str(job.id),
+            "status": JobStatus.CANCELED.value,
+        }
+    raise ValueError("Result webhook requires a terminal job")
+
+
 def build_result_webhook_payload(
     *, event: JobDispatchOutboxEvent, job: AIJob, output: AIOutput
 ) -> dict[str, Any]:
@@ -75,10 +144,7 @@ async def deliver_result_webhook(event_id: str) -> None:
             if event.event_type != RESULT_WEBHOOK_EVENT:
                 raise ValueError(f"Unsupported webhook outbox event: {event.event_type}")
             job = event.job
-            output = job.output
-            if job.status != JobStatus.COMPLETED or output is None:
-                raise ValueError("Completed result webhook requires a completed job output")
-            payload = build_result_webhook_payload(event=event, job=job, output=output)
+            payload = build_terminal_webhook_payload(event=event, job=job)
         await backend.deliver_job_webhook(payload=payload)
         await dispatcher.mark_dispatched(uuid.UUID(event_id))
         logger.info(
