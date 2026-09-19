@@ -168,9 +168,10 @@ async def test_the_loser_of_a_concurrent_claim_adopts_the_winners_document() -> 
         manifest=_manifest(), user_id="user-a", project_id="project-a"
     )
 
-    # `is` would be a non-overlapping identity check to mypy, since the
-    # real return type is SourceDocument and this is a double.
-    assert adopted == winner
+    # Compared by identity through `id()`: mypy sees the declared return type
+    # (SourceDocument) against a test double, which makes `is`/`==` a
+    # non-overlapping comparison even though it is exactly what we mean.
+    assert id(adopted) == id(winner)
 
 
 @pytest.mark.asyncio
