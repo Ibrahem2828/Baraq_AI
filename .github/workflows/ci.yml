@@ -44,6 +44,12 @@ jobs:
       ALLOWED_HOSTS: 'localhost,127.0.0.1'
       DATABASE_URL: 'postgresql+asyncpg://baraq_ai_ci:baraq_ai_ci_password@localhost:5432/baraq_ai_ci'
       DATABASE_SYNC_URL: 'postgresql+psycopg://baraq_ai_ci:baraq_ai_ci_password@localhost:5432/baraq_ai_ci'
+      # Opts the real pgvector retrieval tests in. It is deliberately a
+      # separate variable from DATABASE_URL so that running the suite
+      # anywhere else cannot create and drop tables in whatever database
+      # happens to be configured. Here it is the disposable CI service, so
+      # pointing it at the same database is safe and closes the gate.
+      BARAQ_AI_TEST_DATABASE_URL: 'postgresql+asyncpg://baraq_ai_ci:baraq_ai_ci_password@localhost:5432/baraq_ai_ci'
       REDIS_URL: 'redis://localhost:6379/0'
       CELERY_BROKER_URL: 'redis://localhost:6379/1'
       CELERY_RESULT_BACKEND: 'redis://localhost:6379/2'
