@@ -26,7 +26,10 @@ dependencies = [
   "google-genai>=1.2,<2.0",
   "httpx>=0.28,<1.0",
   "PyJWT[crypto]>=2.10,<3.0",
-  "cryptography>=44,<47",
+  # >=48.0.1: earlier wheels bundle a statically linked OpenSSL with a
+  # known advisory (GHSA-537c-gmf6-5ccf). The previous <47 cap sat below
+  # every fixed release, so the constraint itself blocked remediation.
+  "cryptography>=48.0.1,<50",
   "orjson>=3.10,<4.0",
   "PyYAML>=6.0,<7.0",
   "tenacity>=9.0,<10.0",

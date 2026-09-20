@@ -179,6 +179,14 @@ jobs:
       - name: Package and secret hygiene scan
         run: python scripts/validate_package.py
 
+      # See the matching step in the backend. The cryptography pin here was
+      # capped below every release that fixed the OpenSSL advisory its wheels
+      # bundle, which is the kind of drift only a scheduled check catches.
+      - name: Dependency vulnerability audit
+        run: |
+          python -m pip install --quiet pip-audit
+          pip-audit -r requirements.txt --progress-spinner off
+
       - name: Django HMAC interop contract check
         run: |
           set +e
