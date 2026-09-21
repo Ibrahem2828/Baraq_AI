@@ -56,6 +56,23 @@ class SourceChunk(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("document_id", "chunk_index", name="uq_document_chunk_index"),
         Index("ix_chunk_document_page", "document_id", "page_number"),
+        # Originally created by raw SQL in alembic/versions/0002_vector_indexes.py
+        # (`CREATE INDEX ... USING hnsw (embedding vector_cosine_ops) WITH
+        # (m = 16, ef_construction = 64)`), because pgvector's HNSW method
+        # predates first-class ORM support in this project. Declared here so
+        # `alembic check`/autogenerate see it as already-modeled instead of
+        # proposing to drop it -- compiling this Index against the postgresql
+        # dialect reproduces that CREATE INDEX statement byte-for-byte (verified
+        # via SQLAlchemy's CreateIndex DDL compiler). This does not create,
+        # alter, or drop anything in an existing database; 0002 remains the
+        # only migration responsible for this index's DDL.
+        Index(
+            "ix_source_chunks_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
     )
 
     document_id: Mapped[uuid.UUID] = mapped_column(

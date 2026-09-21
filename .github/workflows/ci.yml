@@ -140,6 +140,24 @@ jobs:
             } 2>&1 | tee -a /tmp/migrate_output.log
             exit_code=${PIPESTATUS[0]}
           fi
+          # Two indexes (uq_ai_jobs_user_backend_request,
+          # ix_source_chunks_embedding_hnsw) are intentionally created by raw
+          # SQL in 0002/0003 rather than emitted by autogenerate -- a partial
+          # unique index and an HNSW vector index, neither expressible the
+          # way `Column(..., unique=True)` or a plain `UniqueConstraint`
+          # would emit them. Both are now declared in SQLAlchemy metadata
+          # (app/models/ai_job.py, app/models/source.py) so `alembic check`
+          # sees them as already-modeled instead of proposing to drop them.
+          # This is the only place that claim is actually verified against a
+          # real database -- see PRE_UPLOAD/RC2 report for why it cannot run
+          # locally.
+          if [ "$exit_code" -eq 0 ]; then
+            {
+              echo "=== alembic check (no drift between models and DB) ==="
+              alembic check
+            } 2>&1 | tee -a /tmp/migrate_output.log
+            exit_code=${PIPESTATUS[0]}
+          fi
           if [ "$exit_code" -ne 0 ]; then
             {
               echo "### Migration step failed (exit $exit_code) -- full output below"

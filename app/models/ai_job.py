@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -37,6 +38,26 @@ class AIJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
         Index("ix_ai_jobs_user_created", "user_id", "created_at"),
         Index("ix_ai_jobs_task_status", "task_type", "status"),
         Index("ix_ai_jobs_project_created", "project_id", "created_at"),
+        # Originally created by raw SQL in
+        # alembic/versions/0003_phase1_production_core.py (`CREATE UNIQUE
+        # INDEX ... ON ai_jobs (user_id, backend_request_id) WHERE
+        # backend_request_id IS NOT NULL`) -- a partial unique index, which
+        # UniqueConstraint cannot express in PostgreSQL DDL (no WHERE
+        # clause), hence the raw SQL. Declared here as an Index with
+        # unique=True + postgresql_where so `alembic check`/autogenerate see
+        # it as already-modeled instead of proposing to drop it; compiling
+        # this Index against the postgresql dialect reproduces that CREATE
+        # UNIQUE INDEX statement byte-for-byte (verified via SQLAlchemy's
+        # CreateIndex DDL compiler). This does not create, alter, or drop
+        # anything in an existing database; 0003 remains the only migration
+        # responsible for this index's DDL.
+        Index(
+            "uq_ai_jobs_user_backend_request",
+            "user_id",
+            "backend_request_id",
+            unique=True,
+            postgresql_where=text("backend_request_id IS NOT NULL"),
+        ),
     )
 
     user_id: Mapped[str] = mapped_column(String(64), index=True, nullable=False)
