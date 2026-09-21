@@ -38,6 +38,21 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql+asyncpg://baraq_ai:change_me@localhost:5432/baraq_ai"
     database_sync_url: str = "postgresql+psycopg://baraq_ai:change_me@localhost:5432/baraq_ai"
+    # Unchanged from the values create_async_engine() previously had
+    # hardcoded in app/db/session.py -- made configurable (RC2) so the API
+    # process and a Celery worker process, which have very different
+    # concurrency shapes (uvicorn serving many requests vs. a worker running
+    # at --concurrency=1), can each be tuned without a code change. The
+    # defaults below reproduce exactly what was already shipped; nothing
+    # about production sizing changes unless these are explicitly overridden.
+    db_pool_size: int = 10
+    db_pool_max_overflow: int = 20
+    db_pool_recycle_seconds: int = 1800
+    # Previously unset (SQLAlchemy's own default, 30s, applied implicitly).
+    # Made explicit and configurable: a pool_timeout must be finite so a
+    # connection-pool exhaustion event surfaces as a clear, bounded
+    # TimeoutError rather than a request/task hanging indefinitely.
+    db_pool_timeout_seconds: int = 30
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str = "redis://localhost:6379/1"
     celery_result_backend: str = "redis://localhost:6379/2"

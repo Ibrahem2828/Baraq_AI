@@ -1,10 +1,42 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.signals import worker_process_init, worker_process_shutdown
 
 from app.core.config import get_settings
+from app.core.logging import get_logger
+from app.workers.async_runner import close_runner, get_runner
 
 settings = get_settings()
+logger = get_logger(__name__)
+
+
+# celery-stubs leaves Signal.connect untyped.
+@worker_process_init.connect  # type: ignore[untyped-decorator]
+def _init_worker_process(**_: object) -> None:
+    """Create this prefork child's one persistent event loop right after
+    fork, before any task runs. This is the primary lifecycle hook (see
+    app/workers/async_runner.py's docstring for the full failure this
+    replaces); async_runner.run() would still create the loop lazily on
+    first use if this signal never fired, but doing it here means the
+    loop -- and the AsyncEngine that will be created on it -- exist from
+    the start of the child's working life, not from whichever task happens
+    to run first.
+    """
+    get_runner()
+    logger.info("ai_worker_process_initialized")
+
+
+# celery-stubs leaves Signal.connect untyped.
+@worker_process_shutdown.connect  # type: ignore[untyped-decorator]
+def _shutdown_worker_process(**_: object) -> None:
+    """Dispose this child's engine and close its event loop before the
+    process actually exits. Ordering matters: this must run before the
+    interpreter starts tearing down, or `AsyncEngine.dispose()` may not get
+    a live loop to run on at all."""
+    close_runner()
+
+
 celery_app = Celery(
     "baraq_ai",
     broker=settings.celery_broker_url,

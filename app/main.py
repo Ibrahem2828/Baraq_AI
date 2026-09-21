@@ -23,6 +23,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import get_redis
+from app.db.session import dispose_engine
 from app.lab.jobs import LocalJobManager
 from app.lab.providers import build_lab_provider
 from app.lab.storage import LabStorage
@@ -65,6 +66,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
     if settings.baraq_runtime_mode == "service":
         await get_redis().aclose()
+    # RC2: the AsyncEngine's connection pool was never explicitly disposed
+    # on shutdown -- harmless for a long-running API process that never
+    # restarts mid-life, but left pooled connections to be cleaned up only
+    # by the OS reaping the process's sockets rather than a clean asyncpg
+    # close. dispose_engine() is idempotent and safe even if no engine was
+    # ever created (e.g. a health-check-only process).
+    await dispose_engine()
     logger.info("service_stopped")
 
 
