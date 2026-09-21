@@ -22,8 +22,15 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import AsyncIterator, Sequence
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from app.db.base import Base
+from app.models.source import SourceChunk, SourceDocument
+from app.rag.repository import SourceRepository
 
 TEST_DATABASE_URL = os.environ.get("BARAQ_AI_TEST_DATABASE_URL", "").strip()
 
@@ -65,12 +72,7 @@ def embed(marker: int) -> list[float]:
 
 
 @pytest.fixture
-async def session():
-    from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-
-    from app.db.base import Base
-
+async def session() -> AsyncIterator[AsyncSession]:
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
     async with engine.begin() as connection:
         await connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
@@ -86,10 +88,16 @@ async def session():
     await engine.dispose()
 
 
-async def seed_document(session, *, user_id, project_id, source_id, texts, first_marker):
+async def seed_document(
+    session: AsyncSession,
+    *,
+    user_id: str,
+    project_id: str,
+    source_id: str,
+    texts: Sequence[str],
+    first_marker: int,
+) -> SourceDocument:
     """One document and its chunks, each chunk with a distinct embedding."""
-    from app.models.source import SourceChunk, SourceDocument
-
     document = SourceDocument(
         user_id=user_id,
         project_id=project_id,
@@ -115,9 +123,7 @@ async def seed_document(session, *, user_id, project_id, source_id, texts, first
 class TestArabicRetrieval:
     """PART F: the fact has to actually come back."""
 
-    async def test_the_unique_arabic_fact_is_retrieved(self, session):
-        from app.rag.repository import SourceRepository
-
+    async def test_the_unique_arabic_fact_is_retrieved(self, session: AsyncSession) -> None:
         user_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
         source_id = str(uuid.uuid4())
         # The fact sits among filler, at a known position.
@@ -144,17 +150,17 @@ class TestArabicRetrieval:
         )
 
         assert results, "similarity search returned nothing for a chunk that exists"
-        assert ARABIC_FACT in results[0].content, (
+        assert ARABIC_FACT in results[0].text, (
             "the nearest chunk was not the one holding the fact; "
-            f"got: {results[0].content[:60]!r}"
+            f"got: {results[0].text[:60]!r}"
         )
         # Arabic survives the round trip through the column, not just the query.
-        assert "سبع مراحل" in results[0].content
+        assert "سبع مراحل" in results[0].text
 
-    async def test_version_pinning_excludes_a_superseded_document(self, session):
+    async def test_version_pinning_excludes_a_superseded_document(
+        self, session: AsyncSession
+    ) -> None:
         """A job must read the file hash it was created with, not a newer one."""
-        from app.rag.repository import SourceRepository
-
         user_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
         source_id = str(uuid.uuid4())
         await seed_document(
@@ -183,9 +189,7 @@ class TestArabicRetrieval:
 class TestRetrievalIsolation:
     """PART G: the tenant filter has to be in the query."""
 
-    async def test_one_learner_never_retrieves_another(self, session):
-        from app.rag.repository import SourceRepository
-
+    async def test_one_learner_never_retrieves_another(self, session: AsyncSession) -> None:
         project_a, project_b = str(uuid.uuid4()), str(uuid.uuid4())
         user_a, user_b = str(uuid.uuid4()), str(uuid.uuid4())
         source_a, source_b = str(uuid.uuid4()), str(uuid.uuid4())
@@ -238,15 +242,15 @@ class TestRetrievalIsolation:
             "a source id in the payload reached another learner's document"
         )
 
-    async def test_the_same_project_id_under_a_different_user_is_still_refused(self, session):
+    async def test_the_same_project_id_under_a_different_user_is_still_refused(
+        self, session: AsyncSession
+    ) -> None:
         """Guessing an identifier must not be enough.
 
         Both filters are in the same WHERE clause, so this would only fail if
         one of them were dropped -- which is precisely the regression worth
         catching.
         """
-        from app.rag.repository import SourceRepository
-
         shared_project = str(uuid.uuid4())
         user_a, user_b = str(uuid.uuid4()), str(uuid.uuid4())
         source_b = str(uuid.uuid4())
