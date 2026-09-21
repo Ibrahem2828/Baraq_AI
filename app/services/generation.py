@@ -72,6 +72,22 @@ class StructuredGenerationService:
                 )
                 self.session.add(attempt)
                 await self.session.flush()
+                # RC2 transaction-hygiene fix: commit the STARTED attempt row
+                # now, before the external provider call below, instead of
+                # only in the `finally` block after it returns. Without this,
+                # the transaction flush() opened stayed open -- idle in
+                # transaction, from PostgreSQL's point of view -- for the
+                # full duration of the provider call, which can run for many
+                # seconds under `candidate.timeout_seconds`. This mirrors the
+                # pattern ProviderBudgetService.reserve/commit_actual/release
+                # already use (see app/services/provider_budget.py): a short
+                # transaction to record state, then the external I/O with
+                # nothing open, then another short transaction to persist the
+                # outcome. `attempt` remains fully usable after this commit --
+                # AsyncSessionLocal's factory sets expire_on_commit=False, so
+                # its attributes stay populated and further mutations below
+                # are simply picked up by the next flush/commit.
+                await self.session.commit()
                 started = time.perf_counter()
                 try:
                     async with asyncio.timeout(candidate.timeout_seconds):

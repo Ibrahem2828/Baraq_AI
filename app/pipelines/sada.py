@@ -126,6 +126,18 @@ async def _transcribe_with_retry(
         )
         session.add(attempt)
         await session.flush()
+        # RC2 transaction-hygiene fix: commit the STARTED attempt row now,
+        # before the external transcription call below. Without this, the
+        # transaction flush() opened stayed open -- idle in transaction --
+        # for the full duration of the transcription call, which for a real
+        # audio file is easily tens of seconds to a few minutes (consistent
+        # with production's observed ~4m55s open transactions). Mirrors the
+        # short-transaction pattern ProviderBudgetService.reserve/
+        # commit_actual/release already use for exactly this reason (see
+        # their docstrings in app/services/provider_budget.py). `attempt`
+        # stays fully usable after this commit -- AsyncSessionLocal's
+        # factory sets expire_on_commit=False.
+        await session.commit()
         started = time.perf_counter()
         try:
             transcription = await candidate.instance.transcribe(
