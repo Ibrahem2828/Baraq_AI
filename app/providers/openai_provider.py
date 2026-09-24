@@ -170,6 +170,18 @@ class OpenAIProvider(LLMProvider):
             estimated_cost_usd=cost,
         )
 
+    @staticmethod
+    def _transcription_response_format(model: str) -> str:
+        # Only whisper-1 returns verbose_json (segments + duration). The
+        # gpt-4o transcribe family rejects it outright ("response_format
+        # 'verbose_json' is not compatible with model ... Use 'json' or
+        # 'text'"), and the diarize model's segmented format is diarized_json.
+        if model == "whisper-1":
+            return "verbose_json"
+        if model.endswith("-diarize"):
+            return "diarized_json"
+        return "json"
+
     async def transcribe(
         self,
         *,
@@ -185,7 +197,7 @@ class OpenAIProvider(LLMProvider):
         kwargs: dict[str, Any] = {
             "model": selected_model,
             "file": (filename, content),
-            "response_format": "verbose_json",
+            "response_format": self._transcription_response_format(selected_model),
         }
         if language:
             kwargs["language"] = language.split("-")[0]

@@ -96,8 +96,12 @@ class _FakeBudget:
 
 
 class _CountingTranscriptionProvider:
+    #: False models the gpt-4o transcribe family: plain json, text only.
+    returns_segments = True
+
     def __init__(self) -> None:
         self.calls: list[bytes] = []
+        self.filenames: list[str] = []
 
     async def transcribe(
         self,
@@ -111,11 +115,16 @@ class _CountingTranscriptionProvider:
     ) -> TranscriptionResult:
         index = len(self.calls)
         self.calls.append(content)
+        self.filenames.append(filename)
         # Local (chunk-relative) segment timing -- the pipeline is
         # responsible for offsetting this to the chunk's absolute position.
         return TranscriptionResult(
             text=f"chunk {index} content",
-            segments=[{"start": 0.2, "end": 1.0, "text": f"chunk {index} content"}],
+            segments=(
+                [{"start": 0.2, "end": 1.0, "text": f"chunk {index} content"}]
+                if self.returns_segments
+                else []
+            ),
             account=ProviderAccount.PRIMARY,
             model=model,
             response_id=f"resp-{index}",
@@ -213,10 +222,12 @@ async def sqlite_attempt_session_factory(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("returns_segments", [True, False], ids=["verbose_json", "json"])
 async def test_long_recording_is_split_transcribed_and_merged(
     long_wav: bytes,
     sqlite_attempt_session_factory: async_sessionmaker[Any],
     monkeypatch: pytest.MonkeyPatch,
+    returns_segments: bool,
 ) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("SADA_CHUNK_THRESHOLD_SECONDS", "3")
@@ -227,6 +238,7 @@ async def test_long_recording_is_split_transcribed_and_merged(
     monkeypatch.setattr(sada_module, "AsyncSessionLocal", sqlite_attempt_session_factory)
 
     provider = _CountingTranscriptionProvider()
+    provider.returns_segments = returns_segments
     generation = _FakeGeneration(provider)
     backend = _FakeBackend(long_wav)
     job = AIJob(
@@ -265,8 +277,18 @@ async def test_long_recording_is_split_transcribed_and_merged(
 
     # More than one chunk was actually dispatched to the provider.
     assert len(provider.calls) > 1
+    # ASCII names with the real (WAV) extension, never the learner's title.
+    # Chunks run concurrently, so compare without order.
+    assert sorted(provider.filenames) == sorted(f"chunk{i}.wav" for i in range(len(provider.calls)))
 
     payload = SadaResult.model_validate(result.result_json)
+    if not returns_segments:
+        # A json response has no segments. The transcript used to be rebuilt
+        # from segments only, so it came back empty; now every chunk's text
+        # survives the merge. (The verbose_json fake's segments all sit in the
+        # overlap zone, which the merge deliberately drops after chunk 0.)
+        for index in range(len(provider.calls)):
+            assert f"chunk {index} content" in payload.full_transcript
     # Segments are in non-decreasing absolute time order and collectively
     # reach close to the true 9-second recording.
     starts = [segment.start_seconds for segment in payload.segments]

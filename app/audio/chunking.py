@@ -110,6 +110,16 @@ def _pydub_format_for(mime_type: str) -> str | None:
     return _MIME_TO_PYDUB_FORMAT.get(mime_type.split(";")[0].strip().lower())
 
 
+def audio_upload_filename(mime_type: str, *, stem: str = "audio") -> str:
+    """A filename whose extension names the audio format.
+
+    OpenAI infers the format from the upload's filename extension alone, so
+    the learner's title (e.g. "تسجيل صوتي", no extension) was rejected as
+    "Unsupported file format". ASCII stem, extension from the MIME type.
+    """
+    return f"{stem}.{_pydub_format_for(mime_type) or 'wav'}"
+
+
 class AudioChunker:
     """Thin pydub adapter: decode once, detect silences once, export each
     planned chunk as WAV bytes (OpenAI's transcription API infers format

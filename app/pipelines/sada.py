@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audio.chunking import (
     AudioChunker,
     ChunkPlan,
+    audio_upload_filename,
     chunks_from_boundaries,
     plan_chunk_boundaries,
 )
@@ -206,6 +207,27 @@ def _normalize_segments(
     return normalized
 
 
+def _whole_chunk_segment(result: TranscriptionResult, plan: ChunkPlan) -> list[TranscriptSegment]:
+    """The chunk's text as one segment spanning the chunk.
+
+    The gpt-4o transcribe models answer in plain json: text, no segments. The
+    merge rebuilds the transcript from segments, so without this every
+    chunked (long) recording would come back empty.
+    """
+    text = result.text.strip()
+    if not text:
+        return []
+    return [
+        TranscriptSegment(
+            start_seconds=plan.start_ms / 1000,
+            end_seconds=plan.end_ms / 1000,
+            text=text,
+            speaker=None,
+            confidence=None,
+        )
+    ]
+
+
 class SadaPipeline(AIPipeline):
     knowledge_policy = KnowledgePolicy.TRANSCRIPT_PRESERVATION
     version = "3"
@@ -256,7 +278,7 @@ class SadaPipeline(AIPipeline):
                 settings=settings,
                 candidates=candidates,
                 content=content,
-                filename=manifest.title,
+                filename=audio_upload_filename(manifest.mime_type),
                 language=request.language,
                 prompt=known_terms_prompt,
                 diarize=request.diarize,
@@ -440,7 +462,8 @@ class SadaPipeline(AIPipeline):
                     settings=settings,
                     candidates=candidates,
                     content=chunk_bytes,
-                    filename=f"{manifest_title}.chunk{plan.index}.wav",
+                    # Every chunk is exported as WAV (AudioChunker.export_chunk).
+                    filename=f"chunk{plan.index}.wav",
                     language=language,
                     prompt=known_terms_prompt,
                     diarize=diarize,
@@ -463,6 +486,7 @@ class SadaPipeline(AIPipeline):
 
         chunk_segment_lists = [
             _normalize_segments(result.segments, time_offset_seconds=plan.start_ms / 1000)
+            or _whole_chunk_segment(result, plan)
             for result, plan in zip(chunk_results, chunk_plans, strict=True)
         ]
         primary_starts = [plan.primary_start_ms / 1000 for plan in chunk_plans]

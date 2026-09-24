@@ -54,6 +54,9 @@ class FakeBudget:
 
 
 class FakeTranscriptionProvider:
+    def __init__(self) -> None:
+        self.filenames: list[str] = []
+
     async def transcribe(
         self,
         *,
@@ -64,6 +67,7 @@ class FakeTranscriptionProvider:
         prompt: str | None,
         diarize: bool,
     ) -> TranscriptionResult:
+        self.filenames.append(filename)
         return TranscriptionResult(
             text=RAW_TEXT,
             segments=[dict(segment) for segment in SEGMENTS],
@@ -300,3 +304,16 @@ async def test_prompt_input_does_not_duplicate_segment_text(
     for segment in SEGMENTS:
         assert segment["text"] not in user_input.replace(RAW_TEXT, "", 1)
     assert '"speaker": "S1"' in user_input or "'speaker': 'S1'" in user_input
+
+
+@pytest.mark.asyncio
+async def test_the_upload_filename_carries_the_audio_extension(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OpenAI infers the format from the extension; the learner's title was
+    sent instead ("تسجيل صوتي", none) and rejected as "Unsupported file
+    format" in production on 2026-09-24."""
+    _, generation = await _run(
+        cleanup_level="literal", cleanup_result=None, monkeypatch=monkeypatch
+    )
+    assert generation.router._instance.filenames == ["audio.mp3"]
