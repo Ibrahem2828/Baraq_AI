@@ -172,7 +172,10 @@ async def deliver_result_webhook(event_id: str) -> None:
         logger.info(
             "ai_result_webhook_delivered",
             event_id=event_id,
-            request_id=payload["metadata"]["request_id"],
+            # Only the completed payload carries metadata; failed/canceled
+            # ones do not, and reading it there raised KeyError right after
+            # every such delivery had already succeeded.
+            request_id=str(job.request_id),
         )
     except AppError as exc:
         await dispatcher.release_for_retry(uuid.UUID(event_id), exc)
