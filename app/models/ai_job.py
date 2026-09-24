@@ -92,8 +92,10 @@ class AIJob(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     error_code: Mapped[str | None] = mapped_column(String(100))
     error_message: Mapped[str | None] = mapped_column(Text)
     retry_count: Mapped[int] = mapped_column(Integer, default=0)
-    started_at: Mapped[datetime | None]
-    completed_at: Mapped[datetime | None]
+    # timezone=True like every other timestamp here: the code writes aware
+    # UTC values, which asyncpg refuses to bind to TIMESTAMP WITHOUT TIME ZONE.
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     output: Mapped[AIOutput | None] = relationship(
         back_populates="job", uselist=False, cascade="all, delete-orphan"

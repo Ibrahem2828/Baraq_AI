@@ -12,14 +12,21 @@ import os
 import subprocess
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 
 import psycopg
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from psycopg import sql
 from sqlalchemy.engine import URL, make_url
 
 LEGACY_REVISION = "0004_final_runtime_delivery"
-HEAD_REVISION = "0010_outbox_target_queue"
+# Whatever the newest migration is: a pinned name broke this test each time
+# a migration was added, without anything being wrong with the upgrade.
+HEAD_REVISION = ScriptDirectory.from_config(
+    Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+).get_current_head()
 
 
 def _postgres_url() -> URL:
