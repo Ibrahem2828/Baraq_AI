@@ -42,6 +42,8 @@ class KholasaPipeline(AIPipeline):
             source_versions=context.job.source_versions,
             query=query,
             routing_key=f"{context.job.id}:kholasa:rag",
+            # No focus topics: summarize the whole source (see fahes.py).
+            min_similarity=None if request.focus_topics else 0.0,
         )
         if not rag.text:
             raise ValidationFailure(

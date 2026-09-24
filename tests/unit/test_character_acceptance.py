@@ -172,6 +172,10 @@ async def test_fahes_is_grounded_in_the_selected_arabic_source(
         "project_id": "project-a",
         "expected_content_sha256": SOURCE_SHA,
     }]
+    # No topic was given, so the whole selected source is in scope: the
+    # similarity floor must not drop its chunks (production 2026-09-24:
+    # insufficient_source_context on a source that was fully ingested).
+    assert _Retriever.calls[0]["min_similarity"] == 0.0
 
 
 @pytest.mark.asyncio
@@ -215,6 +219,8 @@ async def test_kholasa_reuses_the_same_source_version_and_preserves_the_unique_f
 
     assert ARABIC_FACT in validated.executive_summary
     assert validated.citations[0].source_id == SOURCE_ID
+    # Focus topics were given, so the configured similarity floor applies.
+    assert _Retriever.calls[0]["min_similarity"] is None
     assert result.groundedness_score is not None and result.groundedness_score > 0
     assert ingestion.calls[0]["expected_content_sha256"] == SOURCE_SHA
 

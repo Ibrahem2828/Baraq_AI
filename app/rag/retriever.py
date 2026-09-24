@@ -41,7 +41,12 @@ class RAGRetriever:
         source_versions: dict[str, str],
         query: str,
         routing_key: str,
+        min_similarity: float | None = None,
     ) -> RAGContext:
+        """`min_similarity` overrides the configured floor. Pass 0.0 when the
+        learner asked about the whole source rather than a topic: every chunk
+        of their own selected source is relevant then, and a floor measured
+        against a generic stand-in query can only wrongly return nothing."""
         query_vector = await self.embeddings.embed_query(query, routing_key)
         chunks = await self.repository.retrieve(
             user_id=user_id,
@@ -50,7 +55,9 @@ class RAGRetriever:
             source_versions=source_versions,
             query_embedding=query_vector,
             limit=self.settings.rag_top_k,
-            min_similarity=self.settings.rag_min_similarity,
+            min_similarity=(
+                self.settings.rag_min_similarity if min_similarity is None else min_similarity
+            ),
         )
         chunks = self.reranker.rerank(
             query=query,

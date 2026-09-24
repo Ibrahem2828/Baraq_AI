@@ -41,6 +41,9 @@ class FahesPipeline(AIPipeline):
             source_versions=context.job.source_versions,
             query=query,
             routing_key=f"{context.job.id}:fahes:rag",
+            # No topic: a quiz on the whole source. The stand-in query only
+            # orders the chunks; it must not filter the learner's own source out.
+            min_similarity=None if request.topic else 0.0,
         )
         if not rag.text:
             raise ValidationFailure(
