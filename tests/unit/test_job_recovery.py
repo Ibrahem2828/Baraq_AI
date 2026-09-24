@@ -59,8 +59,9 @@ def _job(status: JobStatus) -> AIJob:
     return job
 
 
-def test_preparing_job_is_safe_to_requeue() -> None:
-    assert recovery_action(JobStatus.PREPARING) == RecoveryAction.REQUEUE
+@pytest.mark.parametrize("status", [JobStatus.QUEUED, JobStatus.PREPARING])
+def test_jobs_that_have_not_started_work_are_safe_to_requeue(status: JobStatus) -> None:
+    assert recovery_action(status) == RecoveryAction.REQUEUE
 
 
 @pytest.mark.parametrize(
@@ -137,3 +138,59 @@ async def test_stale_uncertain_job_fails_and_enqueues_delivery(status: JobStatus
     assert job.error_code == "worker_interrupted_execution_uncertain"
     assert len(session.added) == 1
     assert session.added[0].event_type == RESULT_WEBHOOK_EVENT
+
+
+def _process_event(job: AIJob, status: DispatchOutboxStatus) -> JobDispatchOutboxEvent:
+    return JobDispatchOutboxEvent(
+        job_id=job.id, request_id=job.request_id, event_type="process_ai_job", status=status
+    )
+
+
+@pytest.mark.asyncio
+async def test_queued_job_whose_dispatch_was_lost_is_rearmed() -> None:
+    """Production 2026-09-24: the worker raised before PREPARING committed, so
+    the job stayed QUEUED with its event DISPATCHED and nothing ever ran it."""
+    job = _job(JobStatus.QUEUED)
+    event = _process_event(job, DispatchOutboxStatus.DISPATCHED)
+    session = _RecoverySession([job], event)
+
+    assert await recover_stale_jobs(
+        session, stale_after_seconds=60, max_recoveries=2  # type: ignore[arg-type]
+    ) == (1, 0)
+    assert job.status == JobStatus.QUEUED
+    assert job.retry_count == 1
+    assert event.status == DispatchOutboxStatus.PENDING
+    assert event.dispatched_at is None
+    assert session.added == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [DispatchOutboxStatus.PENDING, DispatchOutboxStatus.DISPATCHING])
+async def test_queued_job_still_owned_by_the_outbox_is_left_alone(
+    status: DispatchOutboxStatus,
+) -> None:
+    job = _job(JobStatus.QUEUED)
+    event = _process_event(job, status)
+    session = _RecoverySession([job], event)
+
+    assert await recover_stale_jobs(
+        session, stale_after_seconds=60, max_recoveries=2  # type: ignore[arg-type]
+    ) == (0, 0)
+    assert job.retry_count == 0
+    assert event.status == status
+
+
+@pytest.mark.asyncio
+async def test_queued_job_is_never_failed_when_recoveries_run_out() -> None:
+    """It may just be waiting behind a long queue; failing it would discard a
+    job that could still run."""
+    job = _job(JobStatus.QUEUED)
+    job.retry_count = 2
+    event = _process_event(job, DispatchOutboxStatus.DISPATCHED)
+    session = _RecoverySession([job], event)
+
+    assert await recover_stale_jobs(
+        session, stale_after_seconds=60, max_recoveries=2  # type: ignore[arg-type]
+    ) == (0, 0)
+    assert job.status == JobStatus.QUEUED
+    assert event.status == DispatchOutboxStatus.DISPATCHED

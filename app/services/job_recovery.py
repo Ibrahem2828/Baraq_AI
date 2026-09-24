@@ -19,10 +19,11 @@ class RecoveryAction(StrEnum):
 
 
 def recovery_action(status: JobStatus) -> RecoveryAction:
-    # PREPARING is persisted before source retrieval or provider work starts.
-    # Every later processing state may already have incurred a paid call whose
-    # response was lost with the worker, so replaying it blindly is unsafe.
-    if status == JobStatus.PREPARING:
+    # QUEUED and PREPARING are both persisted before source retrieval or
+    # provider work starts. Every later processing state may already have
+    # incurred a paid call whose response was lost with the worker, so
+    # replaying it blindly is unsafe.
+    if status in (JobStatus.QUEUED, JobStatus.PREPARING):
         return RecoveryAction.REQUEUE
     return RecoveryAction.FAIL_UNCERTAIN
 
@@ -60,6 +61,7 @@ async def recover_stale_jobs(
 ) -> tuple[int, int]:
     cutoff = datetime.now(UTC) - timedelta(seconds=stale_after_seconds)
     processing = [
+        JobStatus.QUEUED,
         JobStatus.PREPARING,
         JobStatus.RETRIEVING,
         JobStatus.PLANNING,
@@ -81,12 +83,33 @@ async def recover_stale_jobs(
     )
     requeued = failed = 0
     for job in jobs:
+        existing: JobDispatchOutboxEvent | None = None
+        if job.status == JobStatus.QUEUED:
+            # A queued job whose dispatch was already handed to the broker but
+            # never reached PREPARING was orphaned: the worker died (or raised)
+            # before its first transition committed, or the message was lost.
+            # While its event is still pending the outbox owns it. It is never
+            # failed here -- it may simply be waiting behind a long queue, and
+            # a duplicate delivery is harmless because the processor only
+            # starts a job that is still QUEUED under a row lock.
+            existing = await session.scalar(
+                select(JobDispatchOutboxEvent)
+                .where(
+                    JobDispatchOutboxEvent.job_id == job.id,
+                    JobDispatchOutboxEvent.event_type == PROCESS_JOB_EVENT,
+                )
+                .with_for_update()
+            )
+            if existing is not None and existing.status != DispatchOutboxStatus.DISPATCHED:
+                continue
+            if job.retry_count >= max_recoveries:
+                continue
         action = recovery_action(job.status)
         if action == RecoveryAction.REQUEUE and job.retry_count < max_recoveries:
             job.status = JobStatus.QUEUED
             job.retry_count += 1
             job.progress_message = "Recovered after worker interruption"
-            dispatch = await _event(session, job, PROCESS_JOB_EVENT)
+            dispatch = existing or await _event(session, job, PROCESS_JOB_EVENT)
             dispatch.status = DispatchOutboxStatus.PENDING
             dispatch.available_at = datetime.now(UTC)
             dispatch.locked_at = None
