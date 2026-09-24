@@ -102,6 +102,8 @@ async def seed_document(
         user_id=user_id,
         project_id=project_id,
         backend_source_id=source_id,
+        title=f"source {source_id}",
+        mime_type="text/plain",
         content_sha256=f"sha-{source_id}",
     )
     session.add(document)
@@ -112,7 +114,7 @@ async def seed_document(
             SourceChunk(
                 document_id=document.id,
                 chunk_index=offset,
-                content=body,
+                text=body,
                 embedding=embed(first_marker + offset),
             )
         )
