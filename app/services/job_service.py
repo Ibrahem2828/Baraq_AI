@@ -195,11 +195,18 @@ class JobService:
             user_id=user_id,
             client_job_id=request.client_job_id,
         )
-        existing = await self.session.scalar(
-            select(AIJob)
-            .where(AIJob.idempotency_hash == idempotency_hash)
-            .options(selectinload(AIJob.output))
-        )
+        # Explicitly scoped so this read-only lookup doesn't leave an
+        # autobegun transaction open on the session: `create_job` right
+        # after this (when there's no existing job to return) opens its own
+        # `async with self.session.begin()`, which raises "A transaction is
+        # already begun on this Session" if this SELECT above left one
+        # dangling.
+        async with self.session.begin():
+            existing = await self.session.scalar(
+                select(AIJob)
+                .where(AIJob.idempotency_hash == idempotency_hash)
+                .options(selectinload(AIJob.output))
+            )
         return self._existing_idempotency_result(existing, input_hash) if existing else None
 
     @staticmethod
