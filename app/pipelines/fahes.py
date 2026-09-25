@@ -6,6 +6,7 @@ from app.core.errors import ValidationFailure
 from app.core.profanity import redact_model_list, redact_model_text
 from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult, require_project_id
+from app.pipelines.student_text import clean_student_text
 from app.prompts.registry import get_prompt_registry
 from app.rag.grounding import ClaimEvidenceValidator
 from app.rag.retriever import RAGRetriever
@@ -34,17 +35,25 @@ class FahesPipeline(AIPipeline):
             session=context.session,
             embeddings=context.ingestion.embeddings,
         )
-        rag = await retriever.retrieve(
-            user_id=context.job.user_id,
-            project_id=project_id,
-            source_ids=request.source_ids,
-            source_versions=context.job.source_versions,
-            query=query,
-            routing_key=f"{context.job.id}:fahes:rag",
-            # No topic: a quiz on the whole source. The stand-in query only
-            # orders the chunks; it must not filter the learner's own source out.
-            min_similarity=None if request.topic else 0.0,
-        )
+        if request.topic:
+            rag = await retriever.retrieve(
+                user_id=context.job.user_id,
+                project_id=project_id,
+                source_ids=request.source_ids,
+                source_versions=context.job.source_versions,
+                query=query,
+                routing_key=f"{context.job.id}:fahes:rag",
+            )
+        else:
+            # The whole source is in scope: an even sample of it, not the
+            # chunks nearest a generic stand-in query (that surfaced a
+            # textbook's cover, committee and table of contents).
+            rag = await retriever.retrieve_across(
+                user_id=context.job.user_id,
+                project_id=project_id,
+                source_ids=request.source_ids,
+                source_versions=context.job.source_versions,
+            )
         if not rag.text:
             raise ValidationFailure(
                 "No sufficiently relevant source context was found",
@@ -96,7 +105,7 @@ class FahesPipeline(AIPipeline):
                     evidence_texts=evidence_texts,
                 ).score
             )
-        result = result.model_copy(update={"citations": rag.citations})
+        result = clean_student_text(result.model_copy(update={"citations": rag.citations}))
         groundedness = sum(grounding_scores) / len(grounding_scores) if grounding_scores else None
         quality = groundedness
         return PipelineResult(

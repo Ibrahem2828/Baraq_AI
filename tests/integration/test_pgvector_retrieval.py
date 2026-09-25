@@ -277,3 +277,67 @@ class TestRetrievalIsolation:
         )
 
         assert results == [], "knowing a project id was enough to read another user's chunks"
+
+
+class TestWholeSourceSample:
+    """A request about a whole source covers all of it, in reading order."""
+
+    async def test_the_sample_skips_front_matter_and_reaches_the_end(
+        self, session: AsyncSession
+    ) -> None:
+        user_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
+        source_id = str(uuid.uuid4())
+        await seed_document(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            source_id=source_id,
+            texts=[f"chunk {index}" for index in range(100)],
+            first_marker=0,
+        )
+        # Another learner's copy of the same source must never be sampled.
+        await seed_document(
+            session,
+            user_id=str(uuid.uuid4()),
+            project_id=project_id,
+            source_id=source_id,
+            texts=["foreign"] * 10,
+            first_marker=200,
+        )
+
+        results = await SourceRepository(session).sample_across(
+            user_id=user_id,
+            project_id=project_id,
+            source_ids=[source_id],
+            source_versions={source_id: f"sha-{source_id}"},
+            limit=9,
+        )
+
+        picked = [int(result.text.split()[1]) for result in results]
+        assert len(picked) == 9
+        assert picked == sorted(picked)
+        assert picked[0] >= 5  # the opening 5% (cover, contents) is skipped
+        assert picked[-1] == 99  # the end of the source is covered
+        assert all(result.text != "foreign" for result in results)
+
+    async def test_a_short_source_is_used_whole(self, session: AsyncSession) -> None:
+        user_id, project_id = str(uuid.uuid4()), str(uuid.uuid4())
+        source_id = str(uuid.uuid4())
+        await seed_document(
+            session,
+            user_id=user_id,
+            project_id=project_id,
+            source_id=source_id,
+            texts=ARABIC_FILLER,
+            first_marker=0,
+        )
+
+        results = await SourceRepository(session).sample_across(
+            user_id=user_id,
+            project_id=project_id,
+            source_ids=[source_id],
+            source_versions={},
+            limit=9,
+        )
+
+        assert [result.text for result in results] == ARABIC_FILLER

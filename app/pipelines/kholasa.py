@@ -6,6 +6,7 @@ from app.core.errors import ValidationFailure
 from app.core.profanity import redact_model_list, redact_model_text
 from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult, require_project_id
+from app.pipelines.student_text import clean_student_text
 from app.prompts.registry import get_prompt_registry
 from app.rag.grounding import ClaimEvidenceValidator
 from app.rag.retriever import RAGRetriever
@@ -35,16 +36,25 @@ class KholasaPipeline(AIPipeline):
             session=context.session,
             embeddings=context.ingestion.embeddings,
         )
-        rag = await retriever.retrieve(
-            user_id=context.job.user_id,
-            project_id=project_id,
-            source_ids=request.source_ids,
-            source_versions=context.job.source_versions,
-            query=query,
-            routing_key=f"{context.job.id}:kholasa:rag",
-            # No focus topics: summarize the whole source (see fahes.py).
-            min_similarity=None if request.focus_topics else 0.0,
-        )
+        if request.focus_topics:
+            rag = await retriever.retrieve(
+                user_id=context.job.user_id,
+                project_id=project_id,
+                source_ids=request.source_ids,
+                source_versions=context.job.source_versions,
+                query=query,
+                routing_key=f"{context.job.id}:kholasa:rag",
+            )
+        else:
+            # The whole source is in scope: an even sample of it, not the
+            # chunks nearest a generic stand-in query (that surfaced a
+            # textbook's cover, committee and table of contents).
+            rag = await retriever.retrieve_across(
+                user_id=context.job.user_id,
+                project_id=project_id,
+                source_ids=request.source_ids,
+                source_versions=context.job.source_versions,
+            )
         if not rag.text:
             raise ValidationFailure(
                 "No sufficiently relevant source context was found",
@@ -96,7 +106,7 @@ class KholasaPipeline(AIPipeline):
             evidence_texts=evidence_texts,
         ).score
         groundedness = (sum(grounding_scores) + summary_score) / (len(grounding_scores) + 1)
-        result = result.model_copy(update={"citations": rag.citations})
+        result = clean_student_text(result.model_copy(update={"citations": rag.citations}))
         return PipelineResult(
             result_json=result.model_dump(mode="json"),
             citations=rag.citations,

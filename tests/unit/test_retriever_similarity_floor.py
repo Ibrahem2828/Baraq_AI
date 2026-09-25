@@ -23,6 +23,10 @@ class _Repository:
         self.calls.append(kwargs)
         return []
 
+    async def sample_across(self, **kwargs: Any) -> list[Any]:
+        self.calls.append(kwargs)
+        return []
+
 
 def _retriever() -> tuple[RAGRetriever, _Repository]:
     retriever = RAGRetriever(session=cast(Any, object()), embeddings=cast(Any, _Embeddings()))
@@ -55,3 +59,17 @@ async def test_an_explicit_zero_floor_reaches_the_repository() -> None:
     retriever, repository = _retriever()
     await _retrieve(retriever, min_similarity=0.0)
     assert repository.calls[0]["min_similarity"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_a_whole_source_sample_fits_the_context_budget() -> None:
+    """_context() stops at the character budget; sampling more chunks than fit
+    would silently drop the end of the source."""
+    retriever, repository = _retriever()
+    await retriever.retrieve_across(
+        user_id="u", project_id="p", source_ids=["s"], source_versions={"s": "h"}
+    )
+    settings = get_settings()
+    limit = repository.calls[0]["limit"]
+    assert 1 <= limit <= settings.rag_top_k
+    assert limit * (settings.rag_chunk_size_chars + 200) <= settings.rag_max_context_chars

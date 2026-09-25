@@ -31,9 +31,7 @@ def priority_scores(request: KhotaRequest) -> dict[str, float]:
 
 def build_plan_days(request: KhotaRequest, *, topics: list[str]) -> list[PlanDay]:
     """Pure function: same request + topics always yields the same plan."""
-    resolved_topics = topics or request.weak_topics or [
-        f"المادة {subject}" for subject in request.subject_ids
-    ]
+    resolved_topics = topics or request.weak_topics
     days: list[PlanDay] = []
     excluded = set(request.excluded_dates)
     cursor = request.start_date
@@ -47,7 +45,13 @@ def build_plan_days(request: KhotaRequest, *, topics: list[str]) -> list[PlanDay
                 subject = request.subject_ids[
                     (len(days) + session_no) % len(request.subject_ids)
                 ]
-                topic = resolved_topics[topic_index % len(resolved_topics)]
+                name = request.subject_names.get(subject, subject)
+                # With no topic to go on, the task is a review of its own subject.
+                topic = (
+                    resolved_topics[topic_index % len(resolved_topics)]
+                    if resolved_topics
+                    else f"مراجعة {name}"
+                )
                 minutes = min(request.preferred_session_minutes, remaining)
                 exam = request.exam_dates.get(subject)
                 priority = (
@@ -59,7 +63,7 @@ def build_plan_days(request: KhotaRequest, *, topics: list[str]) -> list[PlanDay
                 tasks.append(
                     PlannedTask(
                         subject_id=subject,
-                        subject_name=subject,
+                        subject_name=name,
                         topic=topic,
                         task_type=task_type,
                         estimated_minutes=minutes,

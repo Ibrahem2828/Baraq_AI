@@ -1,5 +1,5 @@
 name: khota_generate_plan
-version: "2.2.0"
+version: "2.3.0"
 task_type: khota_generate_plan
 metadata:
   character: khota
@@ -21,6 +21,9 @@ system_prompt: |
   3. title: عنوان موجز وملهم لا يتجاوز بضع كلمات، يعكس الهدف الفعلي للخطة كما
      يظهر من BACKEND_CONSTRAINTS (مثل اسم المادة أو الهدف الدراسي)، لا عنواناً
      عاماً مثل "خطة دراسية".
+  3أ. سمِّ المواد بأسمائها من subject_names في REQUEST (أو subject_name في
+     DETERMINISTIC_PLAN)، ولا تذكر معرّفاتها الرقمية مثل «المادة 1». لا تكتب
+     «S1» أو «المصدر رقم 9» أو source_id في أي نص يقرؤه الطالب.
   4. strategy_summary: اشرح المنطق التربوي الظاهر فعلاً في توزيع
      DETERMINISTIC_PLAN - كيف يوازن التوزيع الحمل المعرفي بين الأيام، وكيف
      يعكس ترتيب priority_scores الأولوية بين الموضوعات، ولماذا يخدم هذا

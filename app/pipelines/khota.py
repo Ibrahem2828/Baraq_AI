@@ -5,6 +5,7 @@ import json
 from app.core.errors import ValidationFailure
 from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult, require_project_id
+from app.pipelines.student_text import clean_student_text
 from app.prompts.registry import get_prompt_registry
 from app.rag.retriever import RAGRetriever
 from app.schemas.khota import KhotaNarrative, KhotaRequest, KhotaResult
@@ -37,18 +38,23 @@ class KhotaPipeline(AIPipeline):
                 session=context.session,
                 embeddings=context.ingestion.embeddings,
             )
-            rag = await retriever.retrieve(
+            # The plan spreads the whole source over the days, so its topics
+            # come from an even sample of it, not from the chunks nearest a
+            # generic query (which favoured the cover and table of contents).
+            rag = await retriever.retrieve_across(
                 user_id=context.job.user_id,
                 project_id=project_id,
                 source_ids=request.source_ids,
                 source_versions=context.job.source_versions,
-                query="الموضوعات والوحدات التي يجب توزيعها في خطة دراسية",
-                routing_key=f"{context.job.id}:khota:rag",
             )
             source_context = rag.text
             citations = rag.citations
             suspicious = rag.suspicious_source_detected
-            topics = [citation.section_title for citation in citations if citation.section_title]
+            topics = list(
+                dict.fromkeys(
+                    citation.section_title for citation in citations if citation.section_title
+                )
+            )
 
         # The schedule itself is deterministic: same request + topics always
         # produce the same days, minutes and priorities (spec section 17).
@@ -93,7 +99,7 @@ class KhotaPipeline(AIPipeline):
             user_input=user_input,
             output_model=KhotaNarrative,
         )
-        narrative = KhotaNarrative.model_validate(provider_result.data)
+        narrative = clean_student_text(KhotaNarrative.model_validate(provider_result.data))
         result = KhotaResult(
             title=narrative.title,
             strategy_summary=narrative.strategy_summary,

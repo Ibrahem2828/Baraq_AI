@@ -64,6 +64,34 @@ class RAGRetriever:
             chunks=chunks,
             limit=self.settings.rag_rerank_top_k,
         )
+        return self._context(chunks)
+
+    async def retrieve_across(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        source_ids: list[str],
+        source_versions: dict[str, str],
+    ) -> RAGContext:
+        """Context for a request about the whole source: an even sample of it
+        (see SourceRepository.sample_across) instead of the chunks nearest a
+        generic stand-in query. Only as many chunks are sampled as fit the
+        context budget: _context() stops at the budget, which would otherwise
+        silently cut the end of the source."""
+        per_chunk = self.settings.rag_chunk_size_chars + 200  # text + [S#] header
+        budget = self.settings.rag_max_context_chars // per_chunk
+        limit = max(1, min(self.settings.rag_top_k, budget))
+        chunks = await self.repository.sample_across(
+            user_id=user_id,
+            project_id=project_id,
+            source_ids=source_ids,
+            source_versions=source_versions,
+            limit=limit,
+        )
+        return self._context(chunks)
+
+    def _context(self, chunks: list[RetrievedChunk]) -> RAGContext:
         context_parts: list[str] = []
         citations: list[Citation] = []
         suspicious = False

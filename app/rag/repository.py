@@ -117,3 +117,77 @@ class SourceRepository:
                 )
             )
         return results
+
+    async def sample_across(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        source_ids: list[str],
+        source_versions: dict[str, str],
+        limit: int,
+        skip_leading_fraction: float = 0.05,
+    ) -> list[RetrievedChunk]:
+        """Chunks spread evenly over the selected sources, in reading order.
+
+        For a request about a whole source (no topic), ranking against a
+        generic stand-in query favoured front matter -- a textbook's cover,
+        authoring committee and table of contents. Here the opening fraction
+        of a long source is skipped and the rest is sampled at even intervals,
+        so a quiz or summary covers the whole book. Tenant and version filters
+        are the same as retrieve(); embeddings are never loaded.
+        """
+        from sqlalchemy import or_
+
+        stmt = (
+            select(SourceChunk.id)
+            .join(SourceDocument, SourceChunk.document_id == SourceDocument.id)
+            .where(
+                SourceDocument.user_id == user_id,
+                SourceDocument.project_id == project_id,
+                SourceDocument.backend_source_id.in_(source_ids),
+            )
+            .order_by(SourceDocument.backend_source_id, SourceChunk.chunk_index)
+        )
+        if source_versions:
+            stmt = stmt.where(
+                or_(
+                    *[
+                        (SourceDocument.backend_source_id == source_id)
+                        & (SourceDocument.content_sha256 == content_hash)
+                        for source_id, content_hash in source_versions.items()
+                    ]
+                )
+            )
+        ordered = list((await self.session.scalars(stmt)).all())
+        if not ordered or limit <= 0:
+            return []
+        start = int(len(ordered) * skip_leading_fraction) if len(ordered) >= 40 else 0
+        pool = ordered[start:]
+        if len(pool) <= limit:
+            picked = pool
+        else:
+            step = (len(pool) - 1) / (limit - 1) if limit > 1 else 0
+            picked = [pool[round(index * step)] for index in range(limit)]
+        rows = (
+            await self.session.execute(
+                select(SourceChunk, SourceDocument)
+                .join(SourceDocument, SourceChunk.document_id == SourceDocument.id)
+                .where(SourceChunk.id.in_(picked))
+                .order_by(SourceDocument.backend_source_id, SourceChunk.chunk_index)
+            )
+        ).all()
+        return [
+            RetrievedChunk(
+                chunk_id=chunk.id,
+                source_id=document.backend_source_id,
+                content_sha256=document.content_sha256,
+                title=document.title,
+                page_number=chunk.page_number,
+                section_title=chunk.section_title,
+                text=chunk.text,
+                score=1.0,
+                semantic_score=0.0,
+            )
+            for chunk, document in rows
+        ]

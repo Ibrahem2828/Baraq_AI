@@ -72,7 +72,14 @@ class _Retriever:
         pass
 
     async def retrieve(self, **kwargs: Any) -> RAGContext:
-        self.calls.append(kwargs)
+        self.calls.append({"method": "retrieve", **kwargs})
+        return self._context(kwargs)
+
+    async def retrieve_across(self, **kwargs: Any) -> RAGContext:
+        self.calls.append({"method": "retrieve_across", **kwargs})
+        return self._context(kwargs)
+
+    def _context(self, kwargs: dict[str, Any]) -> RAGContext:
         assert kwargs["user_id"] == "user-a"
         assert kwargs["project_id"] == "project-a"
         assert kwargs["source_ids"] == [SOURCE_ID]
@@ -130,11 +137,12 @@ async def test_fahes_is_grounded_in_the_selected_arabic_source(
     _Retriever.calls.clear()
     monkeypatch.setattr(fahes_module, "RAGRetriever", _Retriever)
     output = {
-        "title": "اختبار آلية التحقق",
+        "title": "اختبار آلية التحقق (مقتطفات من المصدر رقم 9)",
         "description": "اختبار مبني حصريًا على المصدر المحدد.",
         "questions": [{
             "question_type": "mcq",
-            "question": "كم عدد مراحل آلية التحقق في برّاق؟",
+            # A leaked context label: the learner must never see it.
+            "question": "بحسب النص في S1، كم عدد مراحل آلية التحقق في برّاق؟",
             "choices": ["سبع مراحل", "خمس مراحل"],
             "correct_answer_index": 0,
             "explanation": "يوضح المصدر أن آلية التحقق في برّاق تتكون من سبع مراحل مستقلة.",
@@ -172,10 +180,17 @@ async def test_fahes_is_grounded_in_the_selected_arabic_source(
         "project_id": "project-a",
         "expected_content_sha256": SOURCE_SHA,
     }]
-    # No topic was given, so the whole selected source is in scope: the
-    # similarity floor must not drop its chunks (production 2026-09-24:
-    # insufficient_source_context on a source that was fully ingested).
-    assert _Retriever.calls[0]["min_similarity"] == 0.0
+    # No topic was given, so the whole selected source is in scope: it is
+    # sampled evenly rather than ranked against a stand-in query (production
+    # 2026-09-25: questions about a textbook's cover and table of contents).
+    assert _Retriever.calls[0]["method"] == "retrieve_across"
+    assert (
+        validated.questions[0].question
+        == "بحسب النص في المصدر، كم عدد مراحل آلية التحقق في برّاق؟"
+    )
+    assert validated.title == "اختبار آلية التحقق"
+    # References stay intact for the backend; only learner text is cleaned.
+    assert validated.questions[0].source_references == [1]
 
 
 @pytest.mark.asyncio
@@ -219,8 +234,9 @@ async def test_kholasa_reuses_the_same_source_version_and_preserves_the_unique_f
 
     assert ARABIC_FACT in validated.executive_summary
     assert validated.citations[0].source_id == SOURCE_ID
-    # Focus topics were given, so the configured similarity floor applies.
-    assert _Retriever.calls[0]["min_similarity"] is None
+    # Focus topics were given: ranked retrieval with the configured floor.
+    assert _Retriever.calls[0]["method"] == "retrieve"
+    assert "min_similarity" not in _Retriever.calls[0]
     assert result.groundedness_score is not None and result.groundedness_score > 0
     assert ingestion.calls[0]["expected_content_sha256"] == SOURCE_SHA
 
@@ -241,6 +257,7 @@ async def test_khota_builds_a_valid_deterministic_schedule_within_bounds() -> No
         {
             "source_ids": [],
             "subject_ids": ["subject-1"],
+            "subject_names": {"subject-1": "الفيزياء"},
             "start_date": "2026-09-20",
             "end_date": "2026-09-22",
             "daily_available_minutes": 90,
@@ -261,6 +278,10 @@ async def test_khota_builds_a_valid_deterministic_schedule_within_bounds() -> No
         "2026-09-20" <= str(day.date) <= "2026-09-22" for day in validated.plan_days
     )
     assert ingestion.calls == []
+    # Tasks carry the subject's name, not its id.
+    assert {task.subject_name for day in validated.plan_days for task in day.tasks} == {
+        "الفيزياء"
+    }
 
 
 @pytest.mark.asyncio

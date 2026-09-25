@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
+from typing import Annotated
 
 from pydantic import Field, model_validator
 
@@ -25,6 +26,11 @@ class StudyTaskType(StrEnum):
 class KhotaRequest(StrictModel):
     source_ids: list[str] = Field(default_factory=list, max_length=10)
     subject_ids: list[str] = Field(min_length=1, max_length=20)
+    # Display names for subject_ids. Without them a plan could only say
+    # "subject 1"; optional so older backends keep working.
+    subject_names: dict[str, Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=dict, max_length=20
+    )
     start_date: date
     end_date: date
     daily_available_minutes: int = Field(ge=20, le=720)
