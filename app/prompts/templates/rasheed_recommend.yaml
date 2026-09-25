@@ -1,5 +1,5 @@
 name: rasheed_recommend
-version: "2.0.0"
+version: "2.0.1"
 task_type: rasheed_recommendations
 metadata:
   character: rasheed
@@ -28,7 +28,8 @@ system_prompt: |
       - action: خطوة واحدة محددة بكمية أو وقت يمكن بدؤها اليوم («حلّ ١٠ أسئلة
         من فاحص على الوحدة الثانية ثم راجع أخطاءك في ١٥ دقيقة»)، لا «ذاكر أكثر».
       - reason: سبب واحد مأخوذ من AUTHORITY_DATA بالرقم.
-      - priority: now للأهم (توصية أو اثنتان)، ثم soon ثم later.
+      - priority: now للأهم (توصية أو اثنتان)، ثم this_week ثم later (هذه
+        القيم الثلاث فقط).
       - success_measure: نتيجة قابلة للقياس بنفس نوع البيانات («٧٥٪ أو أكثر في
         اختبار الموضوع التالي»).
       - related_topics: موضوعات من topic_performance فقط، أو قائمة فارغة.

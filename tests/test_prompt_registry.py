@@ -88,3 +88,13 @@ user_template: user
 
     with pytest.raises(ValueError, match="invalid semantic version"):
         PromptRegistry(tmp_path)
+
+
+def test_rasheed_prompt_names_exactly_the_schema_priorities() -> None:
+    """A priority the schema does not define fails every Rasheed result."""
+    from app.schemas.rasheed import RecommendationPriority
+
+    prompt = PromptRegistry(get_settings().prompts_path).get("rasheed_recommend").system_prompt
+    for priority in RecommendationPriority:
+        assert priority.value in prompt
+    assert "soon" not in prompt
