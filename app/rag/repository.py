@@ -4,7 +4,7 @@ import uuid
 from dataclasses import dataclass
 from typing import cast
 
-from sqlalchemy import Select, delete, select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.source import SourceChunk, SourceDocument
@@ -72,7 +72,7 @@ class SourceRepository:
         min_similarity: float,
     ) -> list[RetrievedChunk]:
         distance = SourceChunk.embedding.cosine_distance(query_embedding)
-        stmt: Select[tuple[SourceChunk, SourceDocument, float]] = (
+        stmt = (
             select(SourceChunk, SourceDocument, distance.label("distance"))
             .join(SourceDocument, SourceChunk.document_id == SourceDocument.id)
             .where(
@@ -100,8 +100,11 @@ class SourceRepository:
             )
         rows = (await self.session.execute(stmt)).all()
         results: list[RetrievedChunk] = []
-        for chunk, document, dist in rows:
-            score = max(0.0, min(1.0, 1.0 - float(dist)))
+        for row in rows:
+            # Typed per element: SQLAlchemy 2.0 and 2.1 type result rows differently.
+            chunk = cast(SourceChunk, row[0])
+            document = cast(SourceDocument, row[1])
+            score = max(0.0, min(1.0, 1.0 - float(row[2])))
             if score < min_similarity:
                 continue
             results.append(

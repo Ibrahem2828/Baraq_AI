@@ -38,7 +38,7 @@ async def test_an_aware_utc_value_binds_with_the_column_type(column: str) -> Non
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=None)
     try:
         async with engine.connect() as connection:
-            stored = (
+            stored: datetime = (
                 await connection.execute(select(bindparam("value", now, type_=column_type)))
             ).scalar_one()
     finally:
