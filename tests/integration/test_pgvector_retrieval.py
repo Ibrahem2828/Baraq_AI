@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from typing import ClassVar
 
 import pytest
 from sqlalchemy import text
@@ -341,3 +342,56 @@ class TestWholeSourceSample:
         )
 
         assert [result.text for result in results] == ARABIC_FILLER
+
+
+class TestUnitScopedSample:
+    """A learner's "focus on unit two" is honoured by the database query path."""
+
+    TEXTS: ClassVar[list[str]] = [
+        "غلاف الكتاب ولجنة التأليف",
+        "الفهرس: الوحدة الأولى ... الوحدة الثانية",
+        "الوحدة الأولى الجهاز العصبي المركزي",
+        "تتمة درس الجهاز العصبي",
+        "الوحدة الثانية التكاثر الجنسي",
+        "تتمة درس التكاثر",
+    ]
+
+    async def _seed(self, session: AsyncSession) -> tuple[str, str, str]:
+        user_id, project_id, source_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+        await seed_document(
+            session, user_id=user_id, project_id=project_id, source_id=source_id,
+            texts=self.TEXTS, first_marker=500,
+        )
+        return user_id, project_id, source_id
+
+    async def test_only_the_requested_unit_is_sampled(self, session: AsyncSession) -> None:
+        user_id, project_id, source_id = await self._seed(session)
+        chunks, found = await SourceRepository(session).sample_scoped(
+            user_id=user_id, project_id=project_id, source_ids=[source_id],
+            source_versions={}, limit=9, units={2},
+        )
+        assert found is True
+        assert [chunk.text for chunk in chunks] == self.TEXTS[4:]
+        assert {chunk.section_title for chunk in chunks} == {"الوحدة الثانية"}
+
+    async def test_front_matter_is_left_out_of_a_whole_source_sample(
+        self, session: AsyncSession
+    ) -> None:
+        user_id, project_id, source_id = await self._seed(session)
+        chunks, found = await SourceRepository(session).sample_scoped(
+            user_id=user_id, project_id=project_id, source_ids=[source_id],
+            source_versions={}, limit=9,
+        )
+        assert found is True
+        assert [chunk.text for chunk in chunks] == self.TEXTS[2:]
+
+    async def test_a_missing_unit_samples_the_content_and_says_so(
+        self, session: AsyncSession
+    ) -> None:
+        user_id, project_id, source_id = await self._seed(session)
+        chunks, found = await SourceRepository(session).sample_scoped(
+            user_id=user_id, project_id=project_id, source_ids=[source_id],
+            source_versions={}, limit=9, units={5},
+        )
+        assert found is False
+        assert [chunk.text for chunk in chunks] == self.TEXTS[2:]

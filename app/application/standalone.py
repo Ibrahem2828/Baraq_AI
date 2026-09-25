@@ -17,6 +17,7 @@ from app.lab.retrieval import LocalEvidence, LocalLexicalRetriever
 from app.lab.storage import LabStorage
 from app.lab.stt import LocalWhisperAdapter
 from app.models.enums import TaskType
+from app.pipelines.learner_request import learner_instructions
 from app.prompts.registry import get_prompt_registry
 from app.providers.base import LLMProvider, ProviderResult
 from app.providers.model_aliases import model_for_tier
@@ -170,6 +171,9 @@ class BaraqAIApplication:
             user_input=prompt.render_user(
                 task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
                 source_context=self._source_context(evidence),
+                learner_instructions=learner_instructions(
+                    request.instructions, units=set(), language=request.language
+                )[0],
             ),
             output_model=FahesResult,
             thinking=thinking,
@@ -214,6 +218,9 @@ class BaraqAIApplication:
             user_input=prompt.render_user(
                 task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
                 source_context=self._source_context(evidence),
+                learner_instructions=learner_instructions(
+                    request.instructions, units=set(), language=request.language
+                )[0],
             ),
             output_model=KholasaResult,
             thinking=thinking,

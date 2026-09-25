@@ -39,6 +39,8 @@ class KhotaRequest(StrictModel):
     excluded_dates: list[date] = Field(default_factory=list, max_length=60)
     preferred_session_minutes: int = Field(default=45, ge=15, le=180)
     language: str = Field(default="ar", pattern="^(ar|en)$")
+    # The learner's own request ("a plan for the second unit only").
+    instructions: str | None = Field(default=None, max_length=1000)
 
     @model_validator(mode="after")
     def validate_dates(self) -> KhotaRequest:
@@ -71,6 +73,20 @@ class PlanDay(StrictModel):
         if self.total_minutes != calculated:
             raise ValueError("total_minutes must equal the sum of task durations")
         return self
+
+
+class KhotaTopic(StrictModel):
+    """One lesson/topic of the attached source, in reading order."""
+
+    title: str = Field(min_length=2, max_length=160)
+    source_reference: int = Field(ge=1)
+
+
+class KhotaOutline(StrictModel):
+    """What the model extracts from the source before scheduling: the topics
+    a plan should walk through. Each one is checked against its excerpt."""
+
+    topics: list[KhotaTopic] = Field(min_length=1, max_length=30)
 
 
 class KhotaNarrative(StrictModel):

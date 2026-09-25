@@ -6,10 +6,12 @@ from app.core.errors import ValidationFailure
 from app.core.profanity import redact_model_list, redact_model_text
 from app.core.security_flags import suspicious_source_flags
 from app.pipelines.base import AIPipeline, PipelineContext, PipelineResult, require_project_id
+from app.pipelines.learner_request import learner_instructions
 from app.pipelines.student_text import clean_student_text
 from app.prompts.registry import get_prompt_registry
 from app.rag.grounding import ClaimEvidenceValidator
 from app.rag.retriever import RAGRetriever
+from app.rag.scope import scoped_context
 from app.schemas.fahes import FahesRequest, FahesResult
 from app.services.knowledge_policy import KnowledgePolicy
 from app.services.routing_config import get_routing_config
@@ -30,30 +32,30 @@ class FahesPipeline(AIPipeline):
                 expected_content_sha256=context.job.source_versions.get(source_id),
             )
 
-        query = request.topic or "المفاهيم الأساسية والقوانين والتعريفات والنقاط التي تقيس الفهم"
         retriever = RAGRetriever(
             session=context.session,
             embeddings=context.ingestion.embeddings,
         )
-        if request.topic:
-            rag = await retriever.retrieve(
-                user_id=context.job.user_id,
-                project_id=project_id,
-                source_ids=request.source_ids,
-                source_versions=context.job.source_versions,
-                query=query,
-                routing_key=f"{context.job.id}:fahes:rag",
-            )
-        else:
-            # The whole source is in scope: an even sample of it, not the
-            # chunks nearest a generic stand-in query (that surfaced a
-            # textbook's cover, committee and table of contents).
-            rag = await retriever.retrieve_across(
-                user_id=context.job.user_id,
-                project_id=project_id,
-                source_ids=request.source_ids,
-                source_versions=context.job.source_versions,
-            )
+        # One scoping rule for every source-reading character (app/rag/scope.py):
+        # named units, then a topic/instructions, then the whole source.
+        scope = await scoped_context(
+            retriever,
+            user_id=context.job.user_id,
+            project_id=project_id,
+            source_ids=request.source_ids,
+            source_versions=context.job.source_versions,
+            routing_key=f"{context.job.id}:fahes:rag",
+            focus=request.topic,
+            instructions=request.instructions,
+            language=request.language,
+        )
+        rag = scope.rag
+        instructions_block, instructions_dropped = learner_instructions(
+            request.instructions, units=scope.units, language=request.language
+        )
+        scope_warnings = scope.warnings + (
+            ["learner_instructions_ignored"] if instructions_dropped else []
+        )
         if not rag.text:
             raise ValidationFailure(
                 "No sufficiently relevant source context was found",
@@ -68,6 +70,7 @@ class FahesPipeline(AIPipeline):
         user_input = prompt.render_user(
             task_parameters=json.dumps(request.model_dump(mode="json"), ensure_ascii=False),
             source_context=rag.text,
+            learner_instructions=instructions_block,
         )
         provider_result = await context.generation.generate(
             job=context.job,
@@ -126,7 +129,8 @@ class FahesPipeline(AIPipeline):
             provider_result=provider_result,
             quality_score=quality,
             groundedness_score=groundedness,
-            warnings=(["suspicious_source_content"] if rag.suspicious_source_detected else [])
+            warnings=scope_warnings
+            + (["suspicious_source_content"] if rag.suspicious_source_detected else [])
             + (["profanity_redacted"] if profanity_redacted else []),
             security_flags=suspicious_source_flags(request.source_ids)
             if rag.suspicious_source_detected

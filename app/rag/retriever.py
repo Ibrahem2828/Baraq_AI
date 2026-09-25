@@ -79,9 +79,7 @@ class RAGRetriever:
         generic stand-in query. Only as many chunks are sampled as fit the
         context budget: _context() stops at the budget, which would otherwise
         silently cut the end of the source."""
-        per_chunk = self.settings.rag_chunk_size_chars + 200  # text + [S#] header
-        budget = self.settings.rag_max_context_chars // per_chunk
-        limit = max(1, min(self.settings.rag_top_k, budget))
+        limit = self._budgeted_limit()
         chunks = await self.repository.sample_across(
             user_id=user_id,
             project_id=project_id,
@@ -90,6 +88,32 @@ class RAGRetriever:
             limit=limit,
         )
         return self._context(chunks)
+
+    async def retrieve_scoped(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        source_ids: list[str],
+        source_versions: dict[str, str],
+        units: set[int],
+    ) -> tuple[RAGContext, bool]:
+        """An even sample of the units a learner asked for ("focus on unit
+        two"), and whether the source has them."""
+        chunks, found = await self.repository.sample_scoped(
+            user_id=user_id,
+            project_id=project_id,
+            source_ids=source_ids,
+            source_versions=source_versions,
+            limit=self._budgeted_limit(),
+            units=units,
+        )
+        return self._context(chunks), found
+
+    def _budgeted_limit(self) -> int:
+        per_chunk = self.settings.rag_chunk_size_chars + 200  # text + [S#] header
+        budget = self.settings.rag_max_context_chars // per_chunk
+        return max(1, min(self.settings.rag_top_k, budget))
 
     def _context(self, chunks: list[RetrievedChunk]) -> RAGContext:
         context_parts: list[str] = []

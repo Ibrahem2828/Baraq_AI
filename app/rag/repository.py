@@ -8,6 +8,7 @@ from sqlalchemy import Select, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.source import SourceChunk, SourceDocument
+from app.rag.outline import label_units, unit_label
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,21 +127,47 @@ class SourceRepository:
         source_ids: list[str],
         source_versions: dict[str, str],
         limit: int,
+        units: set[int] | None = None,
         skip_leading_fraction: float = 0.05,
     ) -> list[RetrievedChunk]:
+        chunks, _ = await self.sample_scoped(
+            user_id=user_id,
+            project_id=project_id,
+            source_ids=source_ids,
+            source_versions=source_versions,
+            limit=limit,
+            units=units,
+            skip_leading_fraction=skip_leading_fraction,
+        )
+        return chunks
+
+    async def sample_scoped(
+        self,
+        *,
+        user_id: str,
+        project_id: str,
+        source_ids: list[str],
+        source_versions: dict[str, str],
+        limit: int,
+        units: set[int] | None = None,
+        skip_leading_fraction: float = 0.05,
+    ) -> tuple[list[RetrievedChunk], bool]:
         """Chunks spread evenly over the selected sources, in reading order.
 
         For a request about a whole source (no topic), ranking against a
         generic stand-in query favoured front matter -- a textbook's cover,
-        authoring committee and table of contents. Here the opening fraction
-        of a long source is skipped and the rest is sampled at even intervals,
-        so a quiz or summary covers the whole book. Tenant and version filters
-        are the same as retrieve(); embeddings are never loaded.
+        authoring committee and table of contents. Where the source has unit
+        headers (app/rag/outline.py), front matter is what precedes the first
+        unit and is left out, and ``units`` restricts the sample to the units a
+        learner asked for; otherwise the opening fraction of a long source is
+        skipped. Returns the chunks and whether the requested units were found
+        (True when none were requested). Tenant and version filters are the
+        same as retrieve(); embeddings are never loaded.
         """
         from sqlalchemy import or_
 
         stmt = (
-            select(SourceChunk.id)
+            select(SourceChunk.id, SourceChunk.text, SourceDocument.backend_source_id)
             .join(SourceDocument, SourceChunk.document_id == SourceDocument.id)
             .where(
                 SourceDocument.user_id == user_id,
@@ -159,17 +186,35 @@ class SourceRepository:
                     ]
                 )
             )
-        ordered = list((await self.session.scalars(stmt)).all())
-        if not ordered or limit <= 0:
-            return []
-        start = int(len(ordered) * skip_leading_fraction) if len(ordered) >= 40 else 0
-        pool = ordered[start:]
+        rows = list((await self.session.execute(stmt)).all())
+        if not rows or limit <= 0:
+            return [], not units
+        # Units are labelled per source: a unit never carries into the next file.
+        labels: dict[uuid.UUID, int | None] = {}
+        by_source: dict[str, list[tuple[uuid.UUID, str]]] = {}
+        for chunk_id, text, source_id in rows:
+            by_source.setdefault(source_id, []).append((chunk_id, text))
+        for items in by_source.values():
+            texts = [text for _, text in items]
+            for (chunk_id, _), label in zip(items, label_units(texts), strict=True):
+                labels[chunk_id] = label
+        ordered = [row[0] for row in rows]
+        found = True
+        if any(label is not None for label in labels.values()):
+            content = [chunk_id for chunk_id in ordered if labels[chunk_id] is not None]
+            pool = [chunk_id for chunk_id in content if not units or labels[chunk_id] in units]
+            if not pool:
+                # The source has no such unit: sample all of it and say so.
+                pool, found = content, False
+        else:
+            start = int(len(ordered) * skip_leading_fraction) if len(ordered) >= 40 else 0
+            pool, found = ordered[start:], not units
         if len(pool) <= limit:
             picked = pool
         else:
             step = (len(pool) - 1) / (limit - 1) if limit > 1 else 0
             picked = [pool[round(index * step)] for index in range(limit)]
-        rows = (
+        picked_rows = (
             await self.session.execute(
                 select(SourceChunk, SourceDocument)
                 .join(SourceDocument, SourceChunk.document_id == SourceDocument.id)
@@ -177,17 +222,20 @@ class SourceRepository:
                 .order_by(SourceDocument.backend_source_id, SourceChunk.chunk_index)
             )
         ).all()
-        return [
-            RetrievedChunk(
-                chunk_id=chunk.id,
-                source_id=document.backend_source_id,
-                content_sha256=document.content_sha256,
-                title=document.title,
-                page_number=chunk.page_number,
-                section_title=chunk.section_title,
-                text=chunk.text,
-                score=1.0,
-                semantic_score=0.0,
+        chunks: list[RetrievedChunk] = []
+        for chunk, document in picked_rows:
+            unit = labels.get(chunk.id)
+            chunks.append(
+                RetrievedChunk(
+                    chunk_id=chunk.id,
+                    source_id=document.backend_source_id,
+                    content_sha256=document.content_sha256,
+                    title=document.title,
+                    page_number=chunk.page_number,
+                    section_title=chunk.section_title or (unit_label(unit) if unit else None),
+                    text=chunk.text,
+                    score=1.0,
+                    semantic_score=0.0,
+                )
             )
-            for chunk, document in rows
-        ]
+        return chunks, found

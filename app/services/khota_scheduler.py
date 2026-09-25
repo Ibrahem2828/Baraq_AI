@@ -59,7 +59,10 @@ def build_plan_days(request: KhotaRequest, *, topics: list[str]) -> list[PlanDay
                     if exam and (exam - cursor).days <= 14
                     else TaskPriority.MEDIUM
                 )
-                task_type = StudyTaskType.REVIEW if session_no % 3 == 2 else StudyTaskType.READ
+                # First pass over the source's topics is study, later passes
+                # review; with no topics at all every session reviews a subject.
+                first_pass = bool(resolved_topics) and topic_index < len(resolved_topics)
+                task_type = StudyTaskType.READ if first_pass else StudyTaskType.REVIEW
                 tasks.append(
                     PlannedTask(
                         subject_id=subject,
@@ -68,8 +71,8 @@ def build_plan_days(request: KhotaRequest, *, topics: list[str]) -> list[PlanDay
                         task_type=task_type,
                         estimated_minutes=minutes,
                         priority=priority,
-                        reason=(
-                            "توزيع حتمي يراعي الوقت المتاح وقرب الاختبار والموضوعات الضعيفة."
+                        reason=_reason(
+                            task_type, topic if resolved_topics else name, request.language
                         ),
                         source_ids=request.source_ids,
                     )
@@ -104,3 +107,14 @@ def validate_hard_constraints(request: KhotaRequest, plan_days: list[PlanDay]) -
         if day.date in seen_dates:
             raise ValueError("Plan contains duplicate days")
         seen_dates.add(day.date)
+
+
+def _reason(task_type: StudyTaskType, topic: str, language: str) -> str:
+    """Why this session exists, in the learner's language."""
+    if language == "en":
+        if task_type == StudyTaskType.READ:
+            return f"First pass: study {topic} and note its key ideas."
+        return f"Review {topic} to consolidate it and find what still needs work."
+    if task_type == StudyTaskType.READ:
+        return f"دراسة {topic} وفهم أفكاره الأساسية لأول مرة."
+    return f"مراجعة {topic} لتثبيته ومعرفة ما يحتاج مزيدًا من التركيز."

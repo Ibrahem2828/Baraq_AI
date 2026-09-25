@@ -12,6 +12,7 @@ def test_all_character_prompts_exist() -> None:
     assert {
         "fahes_generate_quiz",
         "khota_generate_plan",
+        "khota_extract_topics",
         "rasheed_recommend",
         "kholasa_summarize",
         "sada_cleanup_transcript",
@@ -21,9 +22,14 @@ def test_all_character_prompts_exist() -> None:
 def test_prompt_rendering_keeps_arabic() -> None:
     registry = PromptRegistry(get_settings().prompts_path)
     prompt = registry.get("fahes_generate_quiz")
-    rendered = prompt.render_user(task_parameters="اختبار", source_context="[S1] مصدر")
+    rendered = prompt.render_user(
+        task_parameters="اختبار",
+        source_context="[S1] مصدر",
+        learner_instructions="ركّز على الوحدة الثانية",
+    )
     assert "اختبار" in rendered
     assert "[S1]" in rendered
+    assert "الوحدة الثانية" in rendered
 
 
 def test_prompt_rendering_rejects_missing_required_value() -> None:
@@ -31,7 +37,7 @@ def test_prompt_rendering_rejects_missing_required_value() -> None:
     prompt = registry.get("fahes_generate_quiz")
 
     with pytest.raises(KeyError, match="source_context"):
-        prompt.render_user(task_parameters="اختبار")
+        prompt.render_user(task_parameters="اختبار", learner_instructions="لا توجد.")
 
 
 def test_all_templates_render_without_unresolved_variables() -> None:
@@ -45,6 +51,7 @@ def test_all_templates_render_without_unresolved_variables() -> None:
         "authority_data": {"attempts": 1},
         "raw_transcript": "A complete transcript.",
         "segment_timeline": [{"start": 0, "end": 1, "speaker": None}],
+        "learner_instructions": "None.",
     }
 
     for prompt in registry.list():
