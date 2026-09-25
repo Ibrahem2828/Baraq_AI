@@ -90,6 +90,10 @@ class FahesPipeline(AIPipeline):
             result = result.model_copy(update={"questions": questions})
         evidence_texts = [citation.excerpt for citation in rag.citations]
         grounding_scores: list[float] = []
+        # A question its cited evidence does not support is dropped, not the
+        # whole quiz with it; only a quiz with no supported question fails.
+        supported_questions = []
+        first_failure: ValidationFailure | None = None
         for question in result.questions:
             claim = " ".join(
                 [
@@ -98,13 +102,21 @@ class FahesPipeline(AIPipeline):
                     question.explanation,
                 ]
             )
-            grounding_scores.append(
-                ClaimEvidenceValidator.validate(
+            try:
+                score = ClaimEvidenceValidator.validate(
                     claim=claim,
                     source_references=question.source_references,
                     evidence_texts=evidence_texts,
                 ).score
-            )
+            except ValidationFailure as exc:
+                first_failure = first_failure or exc
+                continue
+            grounding_scores.append(score)
+            supported_questions.append(question)
+        if not supported_questions and first_failure is not None:
+            raise first_failure
+        if len(supported_questions) != len(result.questions):
+            result = result.model_copy(update={"questions": supported_questions})
         result = clean_student_text(result.model_copy(update={"citations": rag.citations}))
         groundedness = sum(grounding_scores) / len(grounding_scores) if grounding_scores else None
         quality = groundedness

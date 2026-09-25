@@ -62,6 +62,16 @@ class RasheedPipeline(AIPipeline):
             validate_topic_references(
                 known_topics=known_topics, cited_topics=recommendation.related_topics
             )
+        # Strengths and weaknesses are topics too, and Khota plans study
+        # sessions on the weaknesses. With no per-topic data the model wrote
+        # sentences about the missing data there ("no quiz attempts were
+        # recorded"), which then became study tasks; keep only real topics.
+        result = result.model_copy(
+            update={
+                "strengths": _known_only(result.strengths, known_topics),
+                "weaknesses": _known_only(result.weaknesses, known_topics),
+            }
+        )
         data_strength = min(1.0, (len(authoritative_metrics) + len(request.topic_performance)) / 10)
         return PipelineResult(
             result_json=result.model_dump(mode="json"),
@@ -70,3 +80,13 @@ class RasheedPipeline(AIPipeline):
             quality_score=data_strength,
             groundedness_score=data_strength,
         )
+
+
+def _known_only(topics: list[str], known_topics: set[str]) -> list[str]:
+    """Items naming one of the learner's own topics (allowing "Topic X" for "X")."""
+    kept: list[str] = []
+    for topic in topics:
+        folded = topic.strip().casefold()
+        if folded and any(known and (known in folded or folded in known) for known in known_topics):
+            kept.append(topic)
+    return kept

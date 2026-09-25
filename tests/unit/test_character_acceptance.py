@@ -385,3 +385,138 @@ async def test_arabic_rag_retrieves_the_unique_fact_with_exact_scope() -> None:
     assert repository.kwargs["project_id"] == "project-a"
     assert repository.kwargs["source_ids"] == [SOURCE_ID]
     assert repository.kwargs["source_versions"] == {SOURCE_ID: SOURCE_SHA}
+
+
+@pytest.mark.asyncio
+async def test_an_unsupported_question_is_dropped_not_the_whole_quiz(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(fahes_module, "RAGRetriever", _Retriever)
+    supported = {
+        "question_type": "mcq",
+        "question": "كم عدد مراحل آلية التحقق في برّاق؟",
+        "choices": ["سبع مراحل", "خمس مراحل"],
+        "correct_answer_index": 0,
+        "explanation": "يوضح المصدر أن آلية التحقق في برّاق تتكون من سبع مراحل مستقلة.",
+        "difficulty": "medium",
+        "topic": "آلية التحقق",
+        "source_references": [1],
+    }
+    unsupported = {
+        **supported,
+        "question": "ما عاصمة فرنسا الواقعة على نهر السين؟",
+        "choices": ["باريس", "ليون"],
+        "explanation": "باريس هي العاصمة الفرنسية المعروفة بمعالمها التاريخية.",
+    }
+    output = {
+        "title": "اختبار آلية التحقق",
+        "description": "اختبار مبني على المصدر.",
+        "questions": [supported, unsupported],
+        "covered_topics": ["آلية التحقق"],
+        "warnings": [],
+        "citations": [],
+    }
+    job = _job(
+        TaskType.FAHES_GENERATE_QUIZ,
+        Character.FAHES,
+        {
+            "source_ids": [SOURCE_ID],
+            "question_count": 3,
+            "question_types": ["mcq"],
+            "language": "ar",
+        },
+    )
+
+    result = await FahesPipeline().execute(
+        _context(job, _Generation({FahesResult: output}), _Ingestion())
+    )
+
+    questions = FahesResult.model_validate(result.result_json).questions
+    assert [question.question for question in questions] == [supported["question"]]
+
+
+@pytest.mark.asyncio
+async def test_an_unsupported_flashcard_is_dropped_not_the_whole_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(kholasa_module, "RAGRetriever", _Retriever)
+    output = {
+        "title": "خلاصة آلية التحقق",
+        "executive_summary": ARABIC_FACT + " ويعرض المصدر وظيفة كل مرحلة بوضوح.",
+        "detailed_summary": ARABIC_FACT + " وتعمل هذه المراحل بصورة متتابعة.",
+        "key_points": [ARABIC_FACT],
+        "important_terms": ["آلية التحقق"],
+        "covered_topics": ["آلية التحقق"],
+        "review_questions": [],
+        "flashcards": [
+            {
+                "front": "كم مرحلة في آلية التحقق في برّاق؟",
+                "back": "سبع مراحل مستقلة",
+                "source_references": [1],
+            },
+            {"front": "ما عاصمة فرنسا؟", "back": "باريس على نهر السين", "source_references": [1]},
+        ],
+        "limitations": [],
+        "citations": [],
+    }
+    job = _job(
+        TaskType.KHOLASA_GENERATE_SUMMARY,
+        Character.KHOLASA,
+        {
+            "source_ids": [SOURCE_ID],
+            "summary_length": "medium",
+            "include_review_questions": False,
+            "include_flashcards": True,
+            "language": "ar",
+        },
+    )
+
+    result = await KholasaPipeline().execute(
+        _context(job, _Generation({KholasaResult: output}), _Ingestion())
+    )
+
+    cards = KholasaResult.model_validate(result.result_json).flashcards
+    assert [card.front for card in cards] == ["كم مرحلة في آلية التحقق في برّاق؟"]
+
+
+@pytest.mark.asyncio
+async def test_rasheed_without_topic_data_reports_no_topic_weaknesses() -> None:
+    """Khota plans sessions on Rasheed's weaknesses: a sentence about missing
+    data there became a study task (production 2026-09-25)."""
+    output = {
+        "performance_summary": "لا توجد بيانات كافية بعد لتحليل الأداء حسب الموضوع.",
+        "strengths": [],
+        "weaknesses": ["لم تُسجّل أي محاولات في الاختبارات القصيرة (quiz_attempts = 0)."],
+        "recommendations": [{
+            "title": "ابدأ بأول اختبار",
+            "action": "أنشئ اختبارًا قصيرًا من فاحص على أحد مصادرك ثم راجع أخطاءك.",
+            "reason": "لا توجد بعد محاولات اختبار يمكن تحليل الأداء على أساسها.",
+            "priority": "now",
+            "success_measure": "إكمال أول اختبار قصير هذا الأسبوع.",
+            "related_topics": [],
+        }],
+        "next_best_action": "ابدأ باختبار قصير من فاحص على أحد مصادرك.",
+        "confidence_note": "التحليل مبني على بيانات محدودة جدًا.",
+    }
+    job = _job(
+        TaskType.RASHEED_RECOMMENDATIONS,
+        Character.RASHEED,
+        {
+            "metrics": [{
+                "name": "quiz_attempts",
+                "value": 0,
+                "unit": "count",
+                "period": "all_time",
+                "authoritative": True,
+            }],
+            "topic_performance": [],
+            "recent_actions": [],
+            "language": "ar",
+        },
+    )
+
+    result = await RasheedPipeline().execute(
+        _context(job, _Generation({RasheedResult: output}), _Ingestion())
+    )
+
+    assert RasheedResult.model_validate(result.result_json).weaknesses == []

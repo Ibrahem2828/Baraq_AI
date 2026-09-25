@@ -92,14 +92,23 @@ class KholasaPipeline(AIPipeline):
             profanity_redacted = True
         evidence_texts = [citation.excerpt for citation in rag.citations]
         grounding_scores: list[float] = []
+        # A flashcard its cited evidence does not support is dropped rather
+        # than failing the whole summary (production 2026-09-25); the summary
+        # itself is still checked against all of the evidence below.
+        supported_cards = []
         for card in result.flashcards:
-            grounding_scores.append(
-                ClaimEvidenceValidator.validate(
+            try:
+                score = ClaimEvidenceValidator.validate(
                     claim=f"{card.front} {card.back}",
                     source_references=card.source_references,
                     evidence_texts=evidence_texts,
                 ).score
-            )
+            except ValidationFailure:
+                continue
+            grounding_scores.append(score)
+            supported_cards.append(card)
+        if len(supported_cards) != len(result.flashcards):
+            result = result.model_copy(update={"flashcards": supported_cards})
         summary_score = ClaimEvidenceValidator.validate(
             claim=" ".join([result.executive_summary, *result.key_points]),
             source_references=list(range(1, len(evidence_texts) + 1)),
