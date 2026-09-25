@@ -139,6 +139,12 @@ class StructuredGenerationService:
                     if exc.retryable and job.allow_fallback:
                         await self.router.circuit.record_failure(candidate.account_id)
                         continue
+                    if exc.code == "output_validation_failed" and job.allow_fallback:
+                        # Malformed or off-schema output (production 2026-09-25:
+                        # a model repeating itself until max_output_tokens) says
+                        # nothing about the account's health -- no circuit
+                        # penalty -- but the next candidate gets its turn.
+                        break
                     raise
                 except Exception as exc:
                     elapsed_ms = int((time.perf_counter() - started) * 1000)
