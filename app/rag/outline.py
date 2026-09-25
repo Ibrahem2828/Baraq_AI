@@ -99,7 +99,7 @@ def label_units(texts: list[str]) -> list[int | None]:
     A chunk naming exactly one unit belongs to it; a chunk naming several is a
     contents/overview page and does not change the current unit; a chunk
     naming none continues the unit before it. Everything before the first
-    content page is front matter.
+    page of the lowest unit is front matter.
     """
     labels: list[int | None] = []
     current: int | None = None
@@ -108,6 +108,13 @@ def label_units(texts: list[str]) -> list[int | None]:
         if len(named) == 1:
             current = next(iter(named))
         labels.append(current)
+    # Content starts at the first page of the lowest unit: a contents page that
+    # happens to name a single unit ("مشروع الوحدة الثالثة ... 280") sits
+    # before it and is front matter too (production textbook, 2026-09-26).
+    known = [label for label in labels if label is not None]
+    if known:
+        first = labels.index(min(known))
+        labels[:first] = [None] * first
     return labels
 
 

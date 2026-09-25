@@ -48,6 +48,17 @@ class TestOutline:
         ]
         assert label_units(texts) == [None, None, 1, 1, 2, 2]
 
+    def test_a_contents_page_naming_one_later_unit_is_still_front_matter(self) -> None:
+        # The production textbook: the contents' last page names only unit 3.
+        texts = [
+            "الفهرس: الوحدة الأولى ... الوحدة الثانية ... الوحدة الثالثة",
+            "الوحدة الثالثة - مشروع الوحدة الثالثة 280 - 271",
+            "مقدمة الكتاب",
+            "الوحدة الأو الجهاز العصبي",
+            "الوحدة الثالثة الوراثة",
+        ]
+        assert label_units(texts) == [None, None, None, 1, 3]
+
     @pytest.mark.parametrize(
         ("text", "units"),
         [
