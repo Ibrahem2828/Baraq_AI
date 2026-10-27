@@ -39,7 +39,7 @@ dependencies = [
   # python-pptx imports Pillow at runtime. Pin its security-fixed line here
   # instead of leaving this production dependency to an unconstrained
   # transitive resolution.
-  "Pillow>=12.3.0,<13.0",
+  "Pillow>=13.0.0,<14.0",
   "python-multipart>=0.0.20,<1.0",
   "prometheus-client>=0.21,<1.0",
   "structlog>=24.4,<26.0",

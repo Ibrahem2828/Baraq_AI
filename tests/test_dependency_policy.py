@@ -19,7 +19,7 @@ def test_runtime_dependency_floors_include_the_security_fixed_releases() -> None
     dependencies = _dependencies()
 
     assert "cryptography>=50.0.0,<51" in dependencies
-    assert "Pillow>=12.3.0,<13.0" in dependencies
+    assert "Pillow>=13.0.0,<14.0" in dependencies
 
 
 def test_async_test_stack_is_compatible_with_the_fixed_pytest_release() -> None:
