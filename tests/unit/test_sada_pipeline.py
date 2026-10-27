@@ -41,7 +41,7 @@ class FakeBudget:
     (tests/unit/test_provider_budget.py) -- this fake just always grants, so
     these tests isolate the Sada-specific schema/prompt/dedup logic."""
 
-    async def reserve(self, account: ProviderAccount, max_cost_usd: float) -> Any:
+    async def reserve(self, account: ProviderAccount, max_cost_usd: float, job_id: Any) -> Any:
         from app.services.provider_budget import BudgetReservation
 
         return BudgetReservation(account=account, reserved_usd=max_cost_usd, granted=True)

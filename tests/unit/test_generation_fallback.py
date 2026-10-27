@@ -38,7 +38,9 @@ class _Circuit:
 
 
 class _Budget:
-    async def reserve(self, _account: object, _max_cost: float) -> BudgetReservation:
+    async def reserve(
+        self, _account: object, _max_cost: float, _job_id: object
+    ) -> BudgetReservation:
         return BudgetReservation(account=ProviderAccount.PRIMARY, reserved_usd=0.01, granted=True)
 
     async def commit_actual(self, *_: object) -> None:

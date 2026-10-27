@@ -75,7 +75,7 @@ class _RecordingBudget:
     def __init__(self, timeline: list[str]) -> None:
         self._timeline = timeline
 
-    async def reserve(self, _account: object, _max_cost: float) -> object:
+    async def reserve(self, _account: object, _max_cost: float, _job_id: object) -> object:
         from app.services.provider_budget import BudgetReservation
 
         return BudgetReservation(account=ProviderAccount.PRIMARY, reserved_usd=0.01, granted=True)

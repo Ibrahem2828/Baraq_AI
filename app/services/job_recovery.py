@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.ai_job import AIJob, JobDispatchOutboxEvent
 from app.models.enums import TASK_QUEUE, DispatchOutboxStatus, JobStatus
+from app.services.provider_budget import ProviderBudgetService
 from app.services.webhook_delivery import RESULT_WEBHOOK_EVENT
 
 PROCESS_JOB_EVENT = "process_ai_job"
@@ -118,10 +119,24 @@ async def recover_stale_jobs(
             requeued += 1
             continue
 
+        # The worker that was processing this job is gone -- if it died
+        # between a granted ProviderBudgetService.reserve() and the
+        # matching commit_actual()/release() (e.g. SIGKILL at the
+        # celery_task_time_limit_seconds hard limit mid-call), the
+        # reservation is stuck in ai_provider_usage_months.reserved_cost_usd
+        # with nothing else able to identify or release it. Give it back
+        # before the job is gone from the "still processing" query above.
+        released = await ProviderBudgetService(session).release_orphaned_holds(job.id)
+
         job.status = JobStatus.FAILED
         job.error_code = "worker_interrupted_execution_uncertain"
         job.error_message = "Worker stopped after processing began; provider replay was suppressed"
-        job.progress_message = "Job failed safely after worker interruption"
+        job.progress_message = (
+            f"Job failed safely after worker interruption; released ${released:.4f} "
+            "in orphaned provider budget reservations"
+            if released > 0
+            else "Job failed safely after worker interruption"
+        )
         job.completed_at = datetime.now(UTC)
         delivery = await _event(session, job, RESULT_WEBHOOK_EVENT)
         delivery.status = DispatchOutboxStatus.PENDING

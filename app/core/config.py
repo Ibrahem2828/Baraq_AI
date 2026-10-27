@@ -87,6 +87,21 @@ class Settings(BaseSettings):
     # window to raise/cleanup before the hard kill.
     celery_task_soft_time_limit_seconds: int = Field(default=600, ge=1, le=3600)
     celery_task_time_limit_seconds: int = Field(default=900, ge=1, le=3600)
+    # The limit above hard-kills a worker process via SIGKILL -- which skips
+    # every `except` clause in app/services/job_processor.py, so no cleanup
+    # runs and any ProviderBudgetService reservation granted so far is only
+    # recovered via job_recovery's BudgetReservationHold sweep, not by this
+    # task's own code. It mirrors job_stale_after_seconds correctly for every
+    # task type except Sada: `max_audio_seconds` (below) allows a 2-hour
+    # recording, chunked into sequential provider calls plus a merge/cleanup
+    # pass, which routinely exceeds 900s of wall-clock *total* even though no
+    # single step is stuck (job_stale_after_seconds is not at risk here --
+    # _update_progress commits after every chunk). A separate, much longer
+    # limit for the ai_audio queue specifically (applied per-dispatch in
+    # app/workers/tasks.py, since all task types share one Celery task name)
+    # is the fix, not raising the limit above for everything.
+    celery_audio_task_soft_time_limit_seconds: int = Field(default=9000, ge=1, le=14400)
+    celery_audio_task_time_limit_seconds: int = Field(default=10800, ge=1, le=14400)
     outbox_dispatch_batch_size: int = Field(default=20, ge=1, le=200)
     outbox_lock_timeout_seconds: int = Field(default=120, ge=10, le=3600)
     outbox_retry_max_seconds: int = Field(default=300, ge=1, le=3600)

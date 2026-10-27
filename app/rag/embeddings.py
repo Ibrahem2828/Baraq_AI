@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -12,10 +14,13 @@ from app.services.provider_budget import ProviderBudgetService
 
 
 class EmbeddingService:
-    def __init__(self, router: ProviderRouter, *, session: AsyncSession) -> None:
+    def __init__(
+        self, router: ProviderRouter, *, session: AsyncSession, job_id: uuid.UUID
+    ) -> None:
         self.router = router
         self.settings = get_settings()
         self.budget = ProviderBudgetService(session)
+        self.job_id = job_id
 
     async def embed_documents(self, texts: list[str], routing_key: str) -> list[list[float]]:
         candidates = await self.router.candidates_for_capability(Capability.EMBEDDINGS, routing_key)
@@ -57,7 +62,9 @@ class EmbeddingService:
             # actually reports/charges for this batch.
             estimated_tokens = sum(estimate_tokens(text) for text in batch)
             max_batch_cost = get_cost_calculator().embedding_cost(model, estimated_tokens)
-            reservation = await self.budget.reserve(candidate.account_id, max_batch_cost)
+            reservation = await self.budget.reserve(
+                candidate.account_id, max_batch_cost, self.job_id
+            )
             if not reservation.granted:
                 return None
             try:

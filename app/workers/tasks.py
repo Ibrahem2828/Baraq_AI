@@ -33,8 +33,24 @@ def _enqueue_outbox_event(event: JobDispatchOutboxEvent) -> object:
     if event.event_type == "process_ai_job":
         # Routed per-job (ai_interactive vs ai_audio) via the queue recorded
         # on the event at creation time -- see app.models.enums.TASK_QUEUE.
+        # Every task type shares this one Celery task name, so a longer
+        # per-message time_limit/soft_time_limit (Celery honors these as a
+        # per-invocation override of the worker's default) is how ai_audio
+        # alone gets the long leash a 2-hour recording legitimately needs,
+        # without raising the hard-kill limit for every other task type too
+        # -- see celery_audio_task_time_limit_seconds in app/core/config.py.
+        settings = get_settings()
+        extra: dict[str, int] = {}
+        if event.target_queue == "ai_audio":
+            extra = {
+                "soft_time_limit": settings.celery_audio_task_soft_time_limit_seconds,
+                "time_limit": settings.celery_audio_task_time_limit_seconds,
+            }
         return celery_app.send_task(
-            "app.workers.tasks.process_ai_job", args=[str(event.job_id)], queue=event.target_queue
+            "app.workers.tasks.process_ai_job",
+            args=[str(event.job_id)],
+            queue=event.target_queue,
+            **extra,
         )
     if event.event_type == RESULT_WEBHOOK_EVENT:
         return celery_app.send_task(

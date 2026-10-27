@@ -56,7 +56,7 @@ class StructuredGenerationService:
                 max_output_tokens=candidate.max_output_tokens,
             )
             for _ in range(max(1, self.router.settings.provider_max_retries + 1)):
-                reservation = await self.budget.reserve(candidate.account_id, max_call_cost)
+                reservation = await self.budget.reserve(candidate.account_id, max_call_cost, job.id)
                 if not reservation.granted:
                     # Budget for this account is exhausted -- stop retrying it
                     # and let the outer loop try the next fallback candidate.

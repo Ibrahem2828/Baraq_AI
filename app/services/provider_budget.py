@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal
-from app.models.ai_job import ProviderUsageMonth
+from app.models.ai_job import BudgetReservationHold, ProviderUsageMonth
 from app.models.enums import ProviderAccount
 from app.providers.base import EmbeddingResult, ProviderResult, TranscriptionResult
 
@@ -23,11 +24,16 @@ class BudgetReservation:
     -- must be resolved exactly once, by either `commit_actual()` (the call
     happened -- convert the hold into the real recorded cost) or `release()`
     (the call never happened, or failed, or a different candidate was used
-    instead)."""
+    instead).
+
+    `hold_id` is the matching BudgetReservationHold row (None when nothing
+    was granted, so there is nothing to track) -- see that model's docstring
+    for why a row, not just this in-memory object, has to exist."""
 
     account: ProviderAccount
     reserved_usd: float
     granted: bool
+    hold_id: uuid.UUID | None = None
 
 
 class ProviderBudgetService:
@@ -85,7 +91,7 @@ class ProviderBudgetService:
         return usage
 
     async def _reserve_once(
-        self, account: ProviderAccount, max_cost_usd: float
+        self, account: ProviderAccount, max_cost_usd: float, job_id: uuid.UUID
     ) -> BudgetReservation:
         budget = self.budget_for(account)
         async with AsyncSessionLocal() as session:
@@ -95,10 +101,18 @@ class ProviderBudgetService:
                 await session.commit()
                 return BudgetReservation(account=account, reserved_usd=0.0, granted=False)
             usage.reserved_cost_usd = round(usage.reserved_cost_usd + max_cost_usd, 8)
+            hold = BudgetReservationHold(
+                job_id=job_id, provider_account=account, reserved_usd=max_cost_usd
+            )
+            session.add(hold)
             await session.commit()
-        return BudgetReservation(account=account, reserved_usd=max_cost_usd, granted=True)
+        return BudgetReservation(
+            account=account, reserved_usd=max_cost_usd, granted=True, hold_id=hold.id
+        )
 
-    async def reserve(self, account: ProviderAccount, max_cost_usd: float) -> BudgetReservation:
+    async def reserve(
+        self, account: ProviderAccount, max_cost_usd: float, job_id: uuid.UUID
+    ) -> BudgetReservation:
         """Atomically hold up to `max_cost_usd` against this account's
         monthly budget before a paid call is made.
 
@@ -110,15 +124,20 @@ class ProviderBudgetService:
         the pipeline's larger transaction stays open -- otherwise a slow
         job would serialize every other concurrent call against the same
         provider account behind its lock for its whole duration.
+
+        `job_id` identifies the BudgetReservationHold row this creates when
+        granted, so a worker that dies before `commit_actual()`/`release()`
+        runs leaves something job_recovery can find and give back -- see
+        BudgetReservationHold's docstring.
         """
         try:
-            return await self._reserve_once(account, max_cost_usd)
+            return await self._reserve_once(account, max_cost_usd, job_id)
         except IntegrityError:
             # First reservation of the month for this account: two workers
             # raced to insert the usage row, and the loser's FOR UPDATE query
             # found no row to lock. The winner's insert is now committed;
             # retry once, and this time FOR UPDATE finds and locks it.
-            return await self._reserve_once(account, max_cost_usd)
+            return await self._reserve_once(account, max_cost_usd, job_id)
 
     async def commit_actual(
         self,
@@ -140,6 +159,12 @@ class ProviderBudgetService:
             usage.estimated_cost_usd = round(
                 usage.estimated_cost_usd + result.estimated_cost_usd, 8
             )
+            if reservation.hold_id is not None:
+                await session.execute(
+                    delete(BudgetReservationHold).where(
+                        BudgetReservationHold.id == reservation.hold_id
+                    )
+                )
             await session.commit()
 
     async def release(self, reservation: BudgetReservation) -> None:
@@ -154,4 +179,36 @@ class ProviderBudgetService:
             usage.reserved_cost_usd = round(
                 max(0.0, usage.reserved_cost_usd - reservation.reserved_usd), 8
             )
+            if reservation.hold_id is not None:
+                await session.execute(
+                    delete(BudgetReservationHold).where(
+                        BudgetReservationHold.id == reservation.hold_id
+                    )
+                )
             await session.commit()
+
+    async def release_orphaned_holds(self, job_id: uuid.UUID) -> float:
+        """Release and delete every BudgetReservationHold still outstanding
+        for a job, for a caller (job_recovery) that is about to mark it
+        FAILED and has no live BudgetReservation object -- the worker that
+        held one is gone. Returns the total released, for logging/metrics.
+        A job in normal operation never has a row here by the time it
+        reaches a terminal state, so this is a no-op on the happy path."""
+        released = 0.0
+        async with AsyncSessionLocal() as session:
+            holds = (
+                await session.scalars(
+                    select(BudgetReservationHold)
+                    .where(BudgetReservationHold.job_id == job_id)
+                    .with_for_update()
+                )
+            ).all()
+            for hold in holds:
+                usage = await self._locked_usage_row(session, hold.provider_account)
+                usage.reserved_cost_usd = round(
+                    max(0.0, usage.reserved_cost_usd - hold.reserved_usd), 8
+                )
+                released += hold.reserved_usd
+                await session.delete(hold)
+            await session.commit()
+        return round(released, 8)

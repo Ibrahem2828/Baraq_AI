@@ -127,7 +127,7 @@ async def process_job(job_id: str) -> None:
 
             router = ProviderRouter(redis)
             generation = StructuredGenerationService(session=session, router=router)
-            embeddings = EmbeddingService(router, session=session)
+            embeddings = EmbeddingService(router, session=session, job_id=job.id)
             ingestion = SourceIngestionService(
                 session=session,
                 backend=backend,

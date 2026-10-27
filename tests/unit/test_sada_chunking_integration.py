@@ -83,7 +83,7 @@ class _FakeCircuit:
 
 
 class _FakeBudget:
-    async def reserve(self, account: ProviderAccount, max_cost_usd: float) -> Any:
+    async def reserve(self, account: ProviderAccount, max_cost_usd: float, job_id: Any) -> Any:
         from app.services.provider_budget import BudgetReservation
 
         return BudgetReservation(account=account, reserved_usd=max_cost_usd, granted=True)

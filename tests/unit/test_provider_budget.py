@@ -33,8 +33,10 @@ precedent, not weaker.
 from __future__ import annotations
 
 import asyncio
+import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 from sqlalchemy import event, select
@@ -43,10 +45,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.services.provider_budget as provider_budget_module
 from app.core.config import get_settings
 from app.db.base import Base
-from app.models.ai_job import ProviderUsageMonth
+from app.models.ai_job import BudgetReservationHold, ProviderUsageMonth
 from app.models.enums import ProviderAccount
 from app.providers.base import EmbeddingResult, ProviderUsage
 from app.services.provider_budget import BudgetReservation, ProviderBudgetService
+
+# Every reserve() call below needs a job to attach its BudgetReservationHold
+# row to; these tests exercise the budget arithmetic, not per-job behavior
+# (that's tests/unit/test_job_recovery.py), so one fixed id for all of them
+# is enough.
+_JOB_ID = uuid.uuid4()
 
 
 @pytest.fixture
@@ -69,7 +77,10 @@ async def budget_service(
         conn.exec_driver_sql("BEGIN IMMEDIATE")  # type: ignore[attr-defined]
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all, tables=[ProviderUsageMonth.__table__])  # type: ignore[list-item]
+        await conn.run_sync(
+            Base.metadata.create_all,
+            tables=[ProviderUsageMonth.__table__, BudgetReservationHold.__table__],  # type: ignore[list-item]
+        )
     factory = async_sessionmaker(engine, expire_on_commit=False)
     # provider_budget.py does `from app.db.session import AsyncSessionLocal`,
     # binding the name into its own module -- patch it there, not at the
@@ -103,10 +114,13 @@ def _embedding_result(*, input_tokens: int, cost: float) -> EmbeddingResult:
 
 @pytest.mark.asyncio
 async def test_reserve_grants_when_under_budget(budget_service: ProviderBudgetService) -> None:
-    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 3.0)
-    assert reservation == BudgetReservation(
-        account=ProviderAccount.PRIMARY, reserved_usd=3.0, granted=True
-    )
+    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 3.0, _JOB_ID)
+    # hold_id is a real row id assigned by reserve(), not compared here --
+    # see test_reserve_creates_a_durable_hold_row below for that.
+    assert reservation.account == ProviderAccount.PRIMARY
+    assert reservation.reserved_usd == 3.0
+    assert reservation.granted is True
+    assert reservation.hold_id is not None
     row = await _reserved_row(budget_service.session, ProviderAccount.PRIMARY)
     assert row.reserved_cost_usd == 3.0
     assert row.estimated_cost_usd == 0.0
@@ -116,7 +130,7 @@ async def test_reserve_grants_when_under_budget(budget_service: ProviderBudgetSe
 async def test_reserve_denies_when_it_would_exceed_budget(
     budget_service: ProviderBudgetService,
 ) -> None:
-    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 11.0)
+    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 11.0, _JOB_ID)
     assert reservation.granted is False
     assert reservation.reserved_usd == 0.0
     row = await _reserved_row(budget_service.session, ProviderAccount.PRIMARY)
@@ -131,9 +145,9 @@ async def test_reserve_counts_existing_reservations_not_just_committed_cost(
     # estimated_cost_usd (money already spent) to the cap. Two in-flight,
     # not-yet-committed reservations must also count, or two concurrent
     # calls can each see "$0 committed, still under budget" and both proceed.
-    first = await budget_service.reserve(ProviderAccount.PRIMARY, 6.0)
+    first = await budget_service.reserve(ProviderAccount.PRIMARY, 6.0, _JOB_ID)
     assert first.granted is True
-    second = await budget_service.reserve(ProviderAccount.PRIMARY, 5.0)  # 6 + 5 > 10
+    second = await budget_service.reserve(ProviderAccount.PRIMARY, 5.0, _JOB_ID)  # 6 + 5 > 10
     assert second.granted is False
     row = await _reserved_row(budget_service.session, ProviderAccount.PRIMARY)
     assert row.reserved_cost_usd == 6.0
@@ -143,15 +157,57 @@ async def test_reserve_counts_existing_reservations_not_just_committed_cost(
 async def test_uncapped_account_always_grants(budget_service: ProviderBudgetService) -> None:
     # SECONDARY's budget env var above is "0", meaning uncapped (matches
     # ProviderBudgetService.budget_for's documented mock/replay convention).
-    reservation = await budget_service.reserve(ProviderAccount.SECONDARY, 1_000_000.0)
+    reservation = await budget_service.reserve(ProviderAccount.SECONDARY, 1_000_000.0, _JOB_ID)
     assert reservation.granted is True
+
+
+async def _hold_row(
+    session: AsyncSession, hold_id: uuid.UUID | None
+) -> BudgetReservationHold | None:
+    return cast(
+        "BudgetReservationHold | None",
+        await session.scalar(
+            select(BudgetReservationHold).where(BudgetReservationHold.id == hold_id)
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_reserve_creates_a_durable_hold_row_commit_and_release_both_delete_it(
+    budget_service: ProviderBudgetService,
+) -> None:
+    """The production-readiness fix: reserved_cost_usd alone cannot be
+    reconciled to a specific job once the in-memory BudgetReservation is
+    gone (worker killed). This row is what job_recovery.recover_stale_jobs
+    finds and releases in that case -- see tests/unit/test_job_recovery.py's
+    test_stale_uncertain_job_releases_a_reservation_the_dead_worker_left_behind.
+    Here: the row must exist exactly while the reservation is outstanding."""
+    # Every _hold_row read below commits budget_service.session's own
+    # implicit transaction afterward: the fixture forces BEGIN IMMEDIATE on
+    # every connection from this engine (see budget_service's docstring),
+    # so a read left open on this long-lived session would otherwise hold
+    # SQLite's single write lock and deadlock the next reserve()/release()
+    # call's own short-lived session.
+    committed = await budget_service.reserve(ProviderAccount.PRIMARY, 2.0, _JOB_ID)
+    assert (await _hold_row(budget_service.session, committed.hold_id)) is not None
+    await budget_service.session.commit()
+    await budget_service.commit_actual(committed, _embedding_result(input_tokens=10, cost=1.0))
+    assert (await _hold_row(budget_service.session, committed.hold_id)) is None
+    await budget_service.session.commit()
+
+    released = await budget_service.reserve(ProviderAccount.PRIMARY, 2.0, _JOB_ID)
+    assert (await _hold_row(budget_service.session, released.hold_id)) is not None
+    await budget_service.session.commit()
+    await budget_service.release(released)
+    assert (await _hold_row(budget_service.session, released.hold_id)) is None
 
 
 @pytest.mark.asyncio
 async def test_commit_actual_releases_the_hold_and_records_real_cost(
     budget_service: ProviderBudgetService,
 ) -> None:
-    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 5.0)  # worst-case ceiling
+    # worst-case ceiling
+    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 5.0, _JOB_ID)
     await budget_service.commit_actual(
         reservation, _embedding_result(input_tokens=100, cost=2.0)  # actual cost turned out lower
     )
@@ -169,9 +225,9 @@ async def test_commit_actual_does_not_double_charge_across_retries(
     # Simulates one candidate's retry loop: attempt 1 fails and releases,
     # attempt 2 succeeds and commits. Final committed cost must reflect only
     # the one successful attempt, not both.
-    first_attempt = await budget_service.reserve(ProviderAccount.PRIMARY, 4.0)
+    first_attempt = await budget_service.reserve(ProviderAccount.PRIMARY, 4.0, _JOB_ID)
     await budget_service.release(first_attempt)
-    second_attempt = await budget_service.reserve(ProviderAccount.PRIMARY, 4.0)
+    second_attempt = await budget_service.reserve(ProviderAccount.PRIMARY, 4.0, _JOB_ID)
     await budget_service.commit_actual(
         second_attempt, _embedding_result(input_tokens=50, cost=1.5)
     )
@@ -185,7 +241,7 @@ async def test_commit_actual_does_not_double_charge_across_retries(
 async def test_release_gives_back_an_unused_reservation_without_billing_anything(
     budget_service: ProviderBudgetService,
 ) -> None:
-    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 5.0)
+    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 5.0, _JOB_ID)
     await budget_service.release(reservation)
     row = await _reserved_row(budget_service.session, ProviderAccount.PRIMARY)
     assert row.reserved_cost_usd == 0.0
@@ -209,13 +265,13 @@ async def test_provider_failure_releases_its_reservation_end_to_end(
     """Exercises the exact release-on-failure pattern used by
     generation.py/sada.py/embeddings.py: reserve, the provider call raises,
     release -- and budget is fully available again for the next attempt."""
-    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 10.0)
+    reservation = await budget_service.reserve(ProviderAccount.PRIMARY, 10.0, _JOB_ID)
     assert reservation.granted is True
     try:
         raise RuntimeError("simulated provider failure")
     except RuntimeError:
         await budget_service.release(reservation)
-    retry = await budget_service.reserve(ProviderAccount.PRIMARY, 10.0)
+    retry = await budget_service.reserve(ProviderAccount.PRIMARY, 10.0, _JOB_ID)
     assert retry.granted is True
 
 
@@ -230,7 +286,7 @@ async def test_concurrent_reservations_never_jointly_exceed_the_budget(
     # any of them recorded cost -- this proves the atomic reserve prevents
     # that regardless of how many callers race in at once.
     results = await asyncio.gather(
-        *[budget_service.reserve(ProviderAccount.PRIMARY, 3.0) for _ in range(5)]
+        *[budget_service.reserve(ProviderAccount.PRIMARY, 3.0, _JOB_ID) for _ in range(5)]
     )
     granted = [r for r in results if r.granted]
     assert sum(r.reserved_usd for r in granted) <= 10.0
@@ -251,7 +307,7 @@ async def test_concurrent_first_reservations_of_the_month_do_not_crash_or_double
     # winner just committed, rather than letting the loser's insert crash the
     # request or silently grant on a phantom row.
     results = await asyncio.gather(
-        *[budget_service.reserve(ProviderAccount.GEMINI_PRIMARY, 1.0) for _ in range(8)],
+        *[budget_service.reserve(ProviderAccount.GEMINI_PRIMARY, 1.0, _JOB_ID) for _ in range(8)],
         return_exceptions=True,
     )
     assert all(isinstance(r, BudgetReservation) for r in results), results

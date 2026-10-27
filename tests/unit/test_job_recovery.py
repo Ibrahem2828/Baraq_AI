@@ -1,14 +1,50 @@
 from __future__ import annotations
 
+import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.models.ai_job import AIJob, JobDispatchOutboxEvent
-from app.models.enums import Character, DispatchOutboxStatus, JobStatus, TaskType
+import app.services.provider_budget as provider_budget_module
+from app.db.base import Base
+from app.models.ai_job import (
+    AIJob,
+    BudgetReservationHold,
+    JobDispatchOutboxEvent,
+    ProviderUsageMonth,
+)
+from app.models.enums import Character, DispatchOutboxStatus, JobStatus, ProviderAccount, TaskType
 from app.services.job_recovery import RecoveryAction, recover_stale_jobs, recovery_action
+from app.services.provider_budget import ProviderBudgetService
 from app.services.webhook_delivery import RESULT_WEBHOOK_EVENT
+
+
+@pytest.fixture
+async def budget_sqlite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[async_sessionmaker[Any]]:
+    """recover_stale_jobs now releases any BudgetReservationHold left behind
+    by a dead worker (see ProviderBudgetService.release_orphaned_holds) --
+    which, like reserve/commit_actual/release, deliberately opens its own
+    connection rather than using the test's fake _RecoverySession. Point
+    that connection at a throwaway SQLite file for these tests, same
+    technique as tests/unit/test_provider_budget.py. Yields the session
+    factory itself so a test can open its own real session to verify what
+    landed in it -- the fake _RecoverySession cannot read it back."""
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'recovery_budget.db'}")
+    async with engine.begin() as conn:
+        await conn.run_sync(
+            Base.metadata.create_all,
+            tables=[ProviderUsageMonth.__table__, BudgetReservationHold.__table__],  # type: ignore[list-item]
+        )
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(provider_budget_module, "AsyncSessionLocal", factory)
+    yield factory
+    await engine.dispose()
 
 
 class _Rows:
@@ -127,7 +163,9 @@ async def test_new_dispatch_event_for_a_sada_job_routes_to_the_audio_queue() -> 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", [JobStatus.RETRIEVING, JobStatus.VALIDATING])
-async def test_stale_uncertain_job_fails_and_enqueues_delivery(status: JobStatus) -> None:
+async def test_stale_uncertain_job_fails_and_enqueues_delivery(
+    status: JobStatus, budget_sqlite: async_sessionmaker[Any]
+) -> None:
     job = _job(status)
     session = _RecoverySession([job])
 
@@ -138,6 +176,38 @@ async def test_stale_uncertain_job_fails_and_enqueues_delivery(status: JobStatus
     assert job.error_code == "worker_interrupted_execution_uncertain"
     assert len(session.added) == 1
     assert session.added[0].event_type == RESULT_WEBHOOK_EVENT
+
+
+@pytest.mark.asyncio
+async def test_stale_uncertain_job_releases_a_reservation_the_dead_worker_left_behind(
+    budget_sqlite: async_sessionmaker[Any],
+) -> None:
+    """The exact production-readiness gap this fix closes: a worker killed
+    between a granted reserve() and its commit_actual()/release() leaves a
+    BudgetReservationHold row and an inflated reserved_cost_usd with nothing
+    else able to find or give it back. recover_stale_jobs must, the next
+    time it marks this job FAILED."""
+    job = _job(JobStatus.GENERATING)
+    job.id = uuid.uuid4()  # never flushed by the fake session; reserve() needs a real value
+    session = _RecoverySession([job])
+    # reserve() never touches the ProviderBudgetService it's constructed
+    # with -- only AsyncSessionLocal() (patched above) -- so the fake
+    # _RecoverySession is fine here, same as production's own call sites.
+    reservation = await ProviderBudgetService(session).reserve(  # type: ignore[arg-type]
+        ProviderAccount.PRIMARY, 2.5, job.id
+    )
+    assert reservation.granted
+
+    assert await recover_stale_jobs(
+        session, stale_after_seconds=60, max_recoveries=2  # type: ignore[arg-type]
+    ) == (0, 1)
+
+    assert job.status == JobStatus.FAILED
+    assert "released $2.5000" in job.progress_message
+    async with budget_sqlite() as verify_session:
+        usage = await ProviderBudgetService(verify_session).usage_for(ProviderAccount.PRIMARY)
+        assert usage is not None
+        assert usage.reserved_cost_usd == 0.0
 
 
 def _process_event(job: AIJob, status: DispatchOutboxStatus) -> JobDispatchOutboxEvent:

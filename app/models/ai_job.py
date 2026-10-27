@@ -229,3 +229,30 @@ class ProviderUsageMonth(Base, UUIDPrimaryKeyMixin, TimestampMixin):
     # cannot each pass a stale "committed so far" check and jointly overspend
     # before any of them finishes and records real cost.
     reserved_cost_usd: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
+class BudgetReservationHold(Base, UUIDPrimaryKeyMixin, TimestampMixin):
+    """One durable row per outstanding ProviderBudgetService.reserve() call.
+
+    `reserved_cost_usd` on ProviderUsageMonth is only a running total: once a
+    worker process is gone (killed past `celery_task_time_limit_seconds`,
+    OOM, deploy restart) there is nothing left in memory to tell a later
+    recovery pass how much to give back, or from which account. This row is
+    that record. `reserve()` inserts it in the same short transaction as the
+    usage-row increment; `commit_actual()`/`release()` delete it in the same
+    short transaction as the usage-row decrement. A row that outlives its
+    job (the normal happy path never leaves one behind) means the worker
+    died mid-call -- `job_recovery.recover_stale_jobs` sweeps these for any
+    job it is about to mark FAILED and releases them before deleting.
+    """
+
+    __tablename__ = "ai_budget_reservation_holds"
+    __table_args__ = (Index("ix_budget_reservation_hold_job", "job_id"),)
+
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_jobs.id", ondelete="CASCADE")
+    )
+    provider_account: Mapped[ProviderAccount] = mapped_column(
+        Enum(ProviderAccount, name="ai_budget_reservation_hold_account")
+    )
+    reserved_usd: Mapped[float] = mapped_column(Float, nullable=False)

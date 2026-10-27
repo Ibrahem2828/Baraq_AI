@@ -23,8 +23,16 @@ def test_process_ai_job_event_is_sent_to_its_own_recorded_queue() -> None:
     event = _event(event_type="process_ai_job", target_queue="ai_audio")
     with patch("app.workers.tasks.celery_app.send_task") as send_task:
         _enqueue_outbox_event(event)
+    # ai_audio alone gets a per-message time_limit/soft_time_limit override
+    # long enough for a 2-hour recording -- see app/core/config.py's
+    # celery_audio_task_time_limit_seconds docstring for why every other
+    # queue is deliberately left at the worker's short default.
     send_task.assert_called_once_with(
-        "app.workers.tasks.process_ai_job", args=[str(event.job_id)], queue="ai_audio"
+        "app.workers.tasks.process_ai_job",
+        args=[str(event.job_id)],
+        queue="ai_audio",
+        soft_time_limit=9000,
+        time_limit=10800,
     )
 
 

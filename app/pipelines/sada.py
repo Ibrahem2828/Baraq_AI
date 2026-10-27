@@ -114,7 +114,7 @@ async def _transcribe_with_retry(
         max_call_cost = get_cost_calculator().max_transcription_cost(
             model, max_seconds=settings.max_audio_seconds
         )
-        reservation = await budget.reserve(candidate.account_id, max_call_cost)
+        reservation = await budget.reserve(candidate.account_id, max_call_cost, job_id)
         if not reservation.granted:
             continue
         attempt = ProviderAttempt(
