@@ -23,6 +23,7 @@ from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.logging import configure_logging, get_logger
 from app.core.redis import get_redis
+from app.core.sentry import SENTRY_OPTIONS
 from app.db.session import dispose_engine
 from app.lab.jobs import LocalJobManager
 from app.lab.providers import build_lab_provider
@@ -40,7 +41,7 @@ if settings.sentry_dsn:
         release=settings.app_version,
         integrations=[FastApiIntegration()],
         traces_sample_rate=0.1,
-        send_default_pii=False,
+        **SENTRY_OPTIONS,
     )
 
 

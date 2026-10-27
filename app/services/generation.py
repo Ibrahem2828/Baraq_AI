@@ -42,6 +42,7 @@ class StructuredGenerationService:
             preferred_tier=job.model_tier,
         )
         last_error: Exception | None = None
+        budget_refused = False
         attempt_number = len(job.attempts)
         for candidate in candidates:
             if candidate.instance is None:
@@ -60,6 +61,7 @@ class StructuredGenerationService:
                 if not reservation.granted:
                     # Budget for this account is exhausted -- stop retrying it
                     # and let the outer loop try the next fallback candidate.
+                    budget_refused = True
                     break
                 attempt_number += 1
                 attempt = ProviderAttempt(
@@ -164,6 +166,15 @@ class StructuredGenerationService:
                     await self.session.commit()
         if isinstance(last_error, AppError):
             raise last_error
+        if budget_refused and last_error is None:
+            # Nothing was even attempted: every account was out of budget. Say
+            # so, instead of reporting a provider outage that retrying would
+            # not fix.
+            raise ProviderError(
+                "The provider budget for this period is exhausted",
+                code="provider_budget_exhausted",
+                retryable=False,
+            )
         raise ProviderError(
             "All configured AI provider accounts failed",
             code="all_providers_failed",

@@ -18,6 +18,7 @@ from app.schemas.jobs import (
 )
 from app.services.backend_client import BackendClient
 from app.services.job_service import JobService
+from app.services.webhook_delivery import public_failure_message
 
 router = APIRouter(prefix="/jobs", tags=["Django Gateway Jobs"])
 logger = get_logger(__name__)
@@ -58,7 +59,10 @@ def to_job_view(job: AIJob) -> JobView:
         started_at=job.started_at,
         completed_at=job.completed_at,
         error_code=job.error_code,
-        error_message=job.error_message,
+        # The raw diagnostic (job.error_message) stays in the database: it can
+        # quote model output or source text. Callers get the same reviewed
+        # message the failure webhook sends.
+        error_message=public_failure_message(job.error_code) if job.error_code else None,
         output=output_view,
     )
 
@@ -85,6 +89,7 @@ async def create_job(
         # a Redis outage must not take down job creation with it.
         logger.warning("ai_rate_limit_check_unavailable", user_id=payload.user_id)
     request = payload.to_internal()
+    JobService.ensure_character_enabled(request.task_type, settings.enabled_characters)
     # The contract trace is the canonical request identity across FastAPI,
     # persistence, Celery, provider attempts and the result webhook.
     http_request.state.request_id = str(request.trace.request_id)

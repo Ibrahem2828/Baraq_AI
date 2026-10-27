@@ -55,6 +55,7 @@ _PUBLIC_FAILURE_MESSAGES = {
     "provider_rate_limited": "The AI provider is temporarily rate limited.",
     "provider_unavailable": "The AI provider is temporarily unavailable.",
     "all_providers_failed": "The AI provider is temporarily unavailable.",
+    "provider_budget_exhausted": "The AI service has reached its usage limit for now.",
     "no_provider_available": "No AI provider is currently available for this request.",
     "result_validation_failed": "The generated result did not pass validation.",
     "output_validation_failed": "The generated result did not pass validation.",

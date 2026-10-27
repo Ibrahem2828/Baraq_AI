@@ -4,12 +4,19 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.errors import ConflictError, NotFoundError, ValidationFailure
+from app.core.config import get_settings
+from app.core.errors import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    RateLimitError,
+    ValidationFailure,
+)
 from app.core.idempotency import build_idempotency_scope, stable_hash
 from app.models.ai_job import AIJob, JobDispatchOutboxEvent
 from app.models.enums import TASK_QUEUE, Character, JobStatus, TaskType
@@ -42,6 +49,16 @@ TASK_SCHEMAS: dict[TaskType, type[BaseModel]] = {
 class JobService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    @staticmethod
+    def ensure_character_enabled(task_type: TaskType, enabled_characters: list[str]) -> None:
+        """Refuse a task whose character this deployment does not expose."""
+        character = TASK_CHARACTER.get(task_type)
+        if character is None or character.value not in enabled_characters:
+            raise AuthorizationError(
+                "This character is not available in this release",
+                code="character_not_enabled",
+            )
 
     @staticmethod
     def validate_payload(task_type: TaskType, payload: dict[str, Any]) -> dict[str, Any]:
@@ -100,6 +117,19 @@ class JobService:
             versions[source_id] = manifest.content_sha256
         return versions
 
+    async def _ensure_below_active_job_cap(self, user_id: str) -> None:
+        cap = get_settings().max_active_jobs_per_user
+        active = await self.session.scalar(
+            select(func.count())
+            .select_from(AIJob)
+            .where(AIJob.user_id == user_id, AIJob.status.not_in(list(TERMINAL_JOB_STATES)))
+        )
+        if int(active or 0) >= cap:
+            raise RateLimitError(
+                "Too many AI jobs are already running for this account",
+                details={"code": "too_many_active_jobs", "max_active_jobs": cap},
+            )
+
     async def create_job(
         self, *, user_id: str, request: JobCreateRequest, source_versions: dict[str, str]
     ) -> tuple[AIJob, bool]:
@@ -126,6 +156,7 @@ class JobService:
                 if existing:
                     return self._existing_idempotency_result(existing, input_hash)
 
+                await self._ensure_below_active_job_cap(user_id)
                 source_ids = list(payload.get("source_ids") or [])
                 if request.task_type == TaskType.SADA_TRANSCRIBE_AUDIO:
                     source_ids = [str(payload["source_id"])]

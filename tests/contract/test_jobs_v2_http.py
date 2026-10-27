@@ -300,3 +300,30 @@ def test_cancel_job_scopes_the_lookup_by_user_id(
         "client_job_id": "00000000-0000-0000-0000-000000000010",
         "user_id": "user-1",
     }
+
+
+@pytest.mark.parametrize("task_type", ["kholasa_generate_summary", "sada_transcribe_audio"])
+def test_a_release_can_hide_characters_it_has_not_shipped(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, task_type: str
+) -> None:
+    """ENABLED_CHARACTERS limits the surface to what the release exposes."""
+    monkeypatch.setattr(get_settings(), "enabled_characters", ["rasheed", "fahes", "khota"])
+
+    async def must_not_be_reached(**_: object) -> dict[str, str]:
+        raise AssertionError("a disabled character must be refused before any source lookup")
+
+    monkeypatch.setattr(JobService, "freeze_source_versions", must_not_be_reached)
+    payload = valid_v2_payload()
+    payload["task_type"] = task_type
+
+    response = client.post("/api/ai/v1/jobs", json=payload)
+
+    assert response.status_code == 403, response.text
+    assert response.json()["error"]["code"] == "character_not_enabled"
+
+
+def test_enabled_characters_still_accept_jobs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(get_settings(), "enabled_characters", ["fahes"])
+    assert client.post("/api/ai/v1/jobs", json=valid_v2_payload()).status_code == 202

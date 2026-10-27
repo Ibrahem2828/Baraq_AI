@@ -159,3 +159,33 @@ async def test_malformed_output_falls_back_to_the_next_candidate() -> None:
 async def test_without_fallback_the_validation_failure_is_reported() -> None:
     with pytest.raises(ValidationFailure):
         await _generate(allow_fallback=False)
+
+
+class _ExhaustedBudget(_Budget):
+    async def reserve(
+        self, _account: object, _max_cost: float, _job_id: object
+    ) -> BudgetReservation:
+        return BudgetReservation(account=ProviderAccount.PRIMARY, reserved_usd=0.0, granted=False)
+
+
+@pytest.mark.asyncio
+async def test_an_exhausted_budget_is_reported_as_such_and_calls_no_provider() -> None:
+    from app.core.errors import ProviderError
+
+    healthy = _Healthy()
+    router = _Router([_candidate(ProviderAccount.PRIMARY, healthy)])
+    service = StructuredGenerationService(session=_Session(), router=router)  # type: ignore[arg-type]
+    service.budget = _ExhaustedBudget()  # type: ignore[assignment]
+
+    with pytest.raises(ProviderError) as caught:
+        await service.generate(
+            job=_job(),
+            routing=None,  # type: ignore[arg-type]
+            prompt=_prompt(),
+            user_input="a student's question",
+            output_model=FahesResult,
+        )
+
+    assert caught.value.code == "provider_budget_exhausted"
+    assert caught.value.retryable is False
+    assert healthy.calls == 0

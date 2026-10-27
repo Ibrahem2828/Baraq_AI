@@ -12,6 +12,11 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 
+KNOWN_CHARACTERS = ("fahes", "khota", "rasheed", "kholasa", "sada")
+
+MIN_HMAC_SECRET_LENGTH = 32
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
@@ -35,6 +40,13 @@ class Settings(BaseSettings):
         default_factory=lambda: ["localhost", "127.0.0.1"]
     )
     cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Which characters this deployment accepts jobs for. Defaults to all of
+    # them so shipping the flag changes nothing; a release that exposes only a
+    # subset (e.g. "rasheed,fahes,khota") sets ENABLED_CHARACTERS and every
+    # other task type is refused at the API with `character_not_enabled`.
+    enabled_characters: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(KNOWN_CHARACTERS)
+    )
 
     database_url: str = "postgresql+asyncpg://baraq_ai:change_me@localhost:5432/baraq_ai"
     database_sync_url: str = "postgresql+psycopg://baraq_ai:change_me@localhost:5432/baraq_ai"
@@ -190,6 +202,10 @@ class Settings(BaseSettings):
     sada_chunk_silence_thresh_dbfs: int = -40
     sada_max_concurrent_chunks: int = 3
     ai_requests_per_minute: int = 20
+    # Jobs one user may have queued or running at once. A second line of
+    # defence behind Django's monthly plan limits: a client bug or a script
+    # cannot fan one account out into hundreds of paid generations.
+    max_active_jobs_per_user: int = Field(default=10, ge=1, le=200)
     job_retention_days: int = 180
     raw_content_retention_days: int = 30
     training_candidate_retention_days: int = 365
@@ -219,7 +235,18 @@ class Settings(BaseSettings):
     pricing_config_path: Path = BASE_DIR / "config" / "pricing.yaml"
     prompts_path: Path = BASE_DIR / "app" / "prompts" / "templates"
 
-    @field_validator("allowed_hosts", "cors_origins", mode="before")
+    @field_validator("enabled_characters")
+    @classmethod
+    def validate_enabled_characters(cls, value: list[str]) -> list[str]:
+        normalized = [item.strip().lower() for item in value if item.strip()]
+        unknown = sorted(set(normalized) - set(KNOWN_CHARACTERS))
+        if unknown:
+            raise ValueError(f"ENABLED_CHARACTERS has unknown characters: {', '.join(unknown)}")
+        if not normalized:
+            raise ValueError("ENABLED_CHARACTERS must enable at least one character")
+        return sorted(set(normalized), key=normalized.index)
+
+    @field_validator("allowed_hosts", "cors_origins", "enabled_characters", mode="before")
     @classmethod
     def parse_csv(cls, value: object) -> object:
         if isinstance(value, str):
@@ -256,12 +283,38 @@ class Settings(BaseSettings):
             raise ValueError("DEBUG must be false in production")
         if self.provider_mode != "live":
             raise ValueError("PROVIDER_MODE must be 'live' in production")
+        # Every connection setting must be written down in the production
+        # environment. A default (localhost, change_me, a public hostname)
+        # would otherwise start the service half-configured and only fail on
+        # the first request that reaches the missing piece.
+        unset = [
+            name.upper()
+            for name in (
+                "database_url",
+                "database_sync_url",
+                "redis_url",
+                "celery_broker_url",
+                "celery_result_backend",
+                "baraq_backend_base_url",
+                "allowed_hosts",
+                "baraq_hmac_keys_json",
+                "baraq_hmac_current_key_id",
+            )
+            if name not in self.model_fields_set
+        ]
+        if unset:
+            raise ValueError(f"Required in production but not set: {', '.join(unset)}")
         keys = self.hmac_keyring
         if self.baraq_hmac_current_key_id not in keys or any(
             value in {"", "change-me", "local-development-key-not-for-production"}
             for value in keys.values()
         ):
             raise ValueError("BARAQ_HMAC_KEYS_JSON must contain non-placeholder production keys")
+        if any(len(value) < MIN_HMAC_SECRET_LENGTH for value in keys.values()):
+            raise ValueError(
+                f"Every BARAQ_HMAC_KEYS_JSON secret must be at least {MIN_HMAC_SECRET_LENGTH} "
+                "characters"
+            )
         if not self.openai_primary_api_key.get_secret_value():
             raise ValueError("OPENAI_PRIMARY_API_KEY is required in production")
         parsed_backend_url = urlparse(self.baraq_backend_base_url)
@@ -277,12 +330,23 @@ class Settings(BaseSettings):
             )
         if "*" in self.allowed_hosts or not self.allowed_hosts:
             raise ValueError("ALLOWED_HOSTS must contain explicit production hosts")
-        parsed_database_url = urlparse(self.database_url)
-        if not parsed_database_url.hostname or any(
-            placeholder in self.database_url
-            for placeholder in ("change_me", "change-me", "local_development_only")
+        for name, url in (
+            ("DATABASE_URL", self.database_url),
+            ("DATABASE_SYNC_URL", self.database_sync_url),
         ):
-            raise ValueError("DATABASE_URL must not use a placeholder in production")
+            if not urlparse(url).hostname or any(
+                placeholder in url
+                for placeholder in ("change_me", "change-me", "local_development_only")
+            ):
+                raise ValueError(f"{name} must not use a placeholder in production")
+        for name, url in (
+            ("REDIS_URL", self.redis_url),
+            ("CELERY_BROKER_URL", self.celery_broker_url),
+            ("CELERY_RESULT_BACKEND", self.celery_result_backend),
+        ):
+            parsed = urlparse(url)
+            if parsed.scheme not in {"redis", "rediss"} or not parsed.hostname:
+                raise ValueError(f"{name} must be a redis:// or rediss:// URL with a host")
 
     @property
     def hmac_keyring(self) -> dict[str, str]:
